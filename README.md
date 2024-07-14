@@ -138,7 +138,7 @@ dotfiles/
         └── kitty.conf
 ```
 
-Wrap your custom configurations in each dotfile with the following tags:
+Optionally wrap your custom configurations in each dotfile with the following tags (they will be injected into the real dotfiles):
 
 ```
 # >>> Henry's customizations
