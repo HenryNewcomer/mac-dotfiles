@@ -460,7 +460,7 @@ async def main(args: argparse.Namespace) -> None:
     print_styled("It's recommended to restart your system to ensure all changes take effect.", Colors.WARNING)
 
     # Ask user if they want to clear backups
-    clear_backups_input = input("\nDo you want to clear the backup directories? (yes/no): ").lower()
+    clear_backups_input = input("\nDo you want to clear all backups? (yes/no): ").lower()
     if clear_backups_input == 'yes':
         clear_backups(script_dir)
     else:
