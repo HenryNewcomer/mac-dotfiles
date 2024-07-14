@@ -13,6 +13,7 @@ import plistlib
 from pathlib import Path
 from datetime import datetime
 from typing import List, Tuple, Callable
+import xml.etree.ElementTree as ET
 
 # ANSI color codes for styled output
 class Colors:
@@ -38,6 +39,7 @@ CUSTOM_END_TAG = "# <<< Henry's customizations"
 # URLs for downloads
 FIRA_CODE_URL = "https://github.com/tonsky/FiraCode/releases/download/6.2/Fira_Code_v6.2.zip"
 KITTY_ICON_REPO_URL = "https://github.com/k0nserv/kitty-icon/archive/refs/heads/master.zip"
+EMACS_RSS_URL = "https://emacsformacosx.com/atom/release"
 
 def print_styled(text: str, color: str, bold: bool = False, underline: bool = False) -> None:
     """Print styled text to the console."""
@@ -209,6 +211,61 @@ async def install_kitty_icon(script_dir: Path) -> None:
         print_styled(f"{CROSS} Custom Kitty icon installation failed: {str(e)}", Colors.FAIL)
         print_styled("You may need to run the script with sudo or grant permissions to modify /Applications", Colors.WARNING)
 
+async def install_emacs(script_dir: Path) -> None:
+    """Download and install the latest version of Emacs."""
+    print_styled(f"\n{ARROW} Installing Emacs...", Colors.HEADER, bold=True)
+
+    # Check if Emacs is already installed
+    emacs_app_path = Path("/Applications/Emacs.app")
+    if emacs_app_path.exists():
+        print_styled(f"{CHECK} Emacs is already installed. Skipping installation.", Colors.OKGREEN)
+        print_styled("Please check for updates manually.", Colors.WARNING)
+        return
+
+    try:
+        # Fetch the latest Emacs version from the RSS feed
+        response = requests.get(EMACS_RSS_URL)
+        response.raise_for_status()
+        root = ET.fromstring(response.content)
+
+        # Find the latest entry
+        latest_entry = root.find('{http://www.w3.org/2005/Atom}entry')
+        download_url = latest_entry.find('{http://www.w3.org/2005/Atom}link').get('href')
+        version = latest_entry.find('{http://www.w3.org/2005/Atom}title').text
+
+        # Download Emacs
+        downloads_dir = script_dir / "downloads" / "emacs"
+        downloads_dir.mkdir(parents=True, exist_ok=True)
+        dmg_path = downloads_dir / f"Emacs-{version}.dmg"
+
+        print_styled(f"Downloading Emacs {version}...", Colors.OKBLUE)
+        download_file(download_url, dmg_path)
+
+        # Mount the DMG
+        print_styled("Mounting Emacs DMG...", Colors.OKBLUE)
+        mount_process = await asyncio.create_subprocess_exec(
+            'hdiutil', 'attach', str(dmg_path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await mount_process.communicate()
+
+        if mount_process.returncode != 0:
+            raise Exception(f"Failed to mount DMG: {stderr.decode()}")
+
+        # Copy Emacs.app to Applications
+        print_styled("Installing Emacs...", Colors.OKBLUE)
+        source_path = Path("/Volumes/Emacs/Emacs.app")
+        shutil.copytree(source_path, emacs_app_path)
+
+        # Unmount the DMG
+        print_styled("Unmounting Emacs DMG...", Colors.OKBLUE)
+        await run_command(['hdiutil', 'detach', '/Volumes/Emacs'])
+
+        print_styled(f"{CHECK} Emacs {version} installed successfully", Colors.OKGREEN)
+    except Exception as e:
+        print_styled(f"{CROSS} Emacs installation failed: {str(e)}", Colors.FAIL)
+
 async def install_software(script_dir: Path) -> None:
     """Install all required software."""
     brew_packages = ['kitty', 'vim', 'neovim', 'zsh']
@@ -219,6 +276,7 @@ async def install_software(script_dir: Path) -> None:
 
     await install_fira_code_font(script_dir)
     await install_kitty_icon(script_dir)
+    await install_emacs(script_dir)
 
     for package in brew_packages:
         if await is_package_installed(package):
@@ -277,7 +335,8 @@ def backup_dotfiles(script_dir: Path, home_dir: Path, standalone: bool = False) 
 
     print_styled(f"\nBackup Summary:", Colors.HEADER, bold=True)
     print_styled(f"{CHECK} Successfully backed up: {success_count}", Colors.OKGREEN)
-    print_styled(f"{CROSS} Failed to back up: {fail_count}", Colors.FAIL)
+    if fail_count > 0:
+        print_styled(f"{CROSS} Failed to back up: {fail_count}", Colors.FAIL)
     print_styled(f"Backup directory: {backup_dir}", Colors.WARNING)
 
     return success_count, fail_count
@@ -384,7 +443,7 @@ async def cleanup_and_finalize() -> None:
 
     # Set ZSH as the default shell
     print_styled(f"\n{ARROW} Setting ZSH as the default shell...", Colors.OKBLUE)
-    zsh_path = '/usr/local/bin/zsh'
+    zsh_path = '/opt/homebrew/bin/zsh'
     try:
         if os.path.exists(zsh_path):
             subprocess.run(['chsh', '-s', zsh_path])
@@ -404,7 +463,7 @@ async def cleanup_and_finalize() -> None:
 
     # Verify installations
     print_styled(f"\n{ARROW} Verifying installations...", Colors.OKBLUE)
-    for package in ['kitty', 'emacs', 'vim', 'neovim', 'zsh']:
+    for package in ['kitty', 'emacs', 'vim', 'nvim', 'zsh']:
         try:
             result = await run_command(['which', package])
             if result[0] == 0:
