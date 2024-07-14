@@ -168,13 +168,14 @@ async def install_kitty_icon(script_dir: Path) -> None:
     kitty_icon_dir = downloads_dir / "kitty-icon"
 
     try:
+        kitty_app_path = Path("/Applications/kitty.app")
+        if not kitty_app_path.exists():
+            print_styled(f"{CROSS} Kitty.app not found in /Applications. Skipping icon installation.", Colors.WARNING)
+            return
+
         download_file(KITTY_ICON_REPO_URL, kitty_icon_zip)
         extract_zip(kitty_icon_zip, downloads_dir)
         kitty_icon_dir = next(downloads_dir.glob('kitty-icon-*'))  # Find the extracted directory
-
-        kitty_app_path = Path("/Applications/kitty.app")
-        if not kitty_app_path.exists():
-            raise FileNotFoundError("Kitty.app not found in /Applications")
 
         icon_path = kitty_icon_dir / "build" / "neue_outrun.icns"
         if not icon_path.exists():
@@ -182,6 +183,12 @@ async def install_kitty_icon(script_dir: Path) -> None:
 
         # Update Kitty.app icon
         info_plist_path = kitty_app_path / "Contents" / "Info.plist"
+
+        # Check if we have permission to modify the Info.plist file
+        if not os.access(str(info_plist_path), os.W_OK):
+            print_styled(f"{CROSS} Permission denied to modify Kitty.app. Please run the script with sudo.", Colors.FAIL)
+            return
+
         with open(info_plist_path, 'rb') as f:
             info_plist = plistlib.load(f)
 
@@ -200,19 +207,30 @@ async def install_kitty_icon(script_dir: Path) -> None:
         print_styled(f"{CHECK} Custom Kitty icon installed successfully", Colors.OKGREEN)
     except Exception as e:
         print_styled(f"{CROSS} Custom Kitty icon installation failed: {str(e)}", Colors.FAIL)
+        print_styled("You may need to run the script with sudo or grant permissions to modify /Applications", Colors.WARNING)
 
 async def install_software(script_dir: Path) -> None:
     """Install all required software."""
     brew_packages = ['kitty', 'emacs', 'vim', 'neovim', 'zsh']
 
-    installation_processes = [
-        install_homebrew,
-        lambda: install_fira_code_font(script_dir),
-        lambda: install_kitty_icon(script_dir),
-    ] + [lambda pkg=pkg: install_brew_package(pkg) for pkg in brew_packages]
+    if not await install_homebrew():
+        print_styled("Homebrew installation failed. Skipping package installations.", Colors.FAIL)
+        return
 
-    for process in installation_processes:
-        await process()
+    await install_fira_code_font(script_dir)
+    await install_kitty_icon(script_dir)
+
+    for package in brew_packages:
+        if await is_package_installed(package):
+            print_styled(f"{CHECK} {package} is already installed. Updating...", Colors.OKGREEN)
+            await run_command(['brew', 'upgrade', package])
+        else:
+            await install_brew_package(package)
+
+async def is_package_installed(package: str) -> bool:
+    """Check if a package is already installed."""
+    returncode, _, _ = await run_command(['brew', 'list', package])
+    return returncode == 0
 
 def extract_custom_sections(content: str) -> List[str]:
     """Extract all custom sections from the content."""
@@ -475,5 +493,6 @@ def get_args():
     return parser.parse_args()
 
 if __name__ == "__main__":
+    os.system('clear') # Clear the terminal screen (Unix/Linux)
     args = get_args()
     asyncio.run(main(args))
