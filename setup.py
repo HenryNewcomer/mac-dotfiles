@@ -12,20 +12,21 @@ import zipfile
 import plistlib
 from pathlib import Path
 from datetime import datetime
-from typing import List, Tuple, Callable
+from typing import List, Tuple, Callable, Dict
 import xml.etree.ElementTree as ET
 
 # ANSI color codes for styled output
 class Colors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
+    HEADER    = '\033[95m'
+    OKBLUE    = '\033[94m'
+    OKGREEN   = '\033[92m'
+    WARNING   = '\033[93m'
+    ORANGE    = '\033[38;5;208m'
+    FAIL      = '\033[91m'
+    ENDC      = '\033[0m'
+    BOLD      = '\033[1m'
     UNDERLINE = '\033[4m'
-    CYAN = '\033[96m'
+    CYAN      = '\033[96m'
 
 # Symbols for visual indicators
 CHECK = '✓'
@@ -34,12 +35,41 @@ ARROW = '→'
 
 # Custom tags for dotfiles
 CUSTOM_START_TAG = "# >>> Henry's customizations"
-CUSTOM_END_TAG = "# <<< Henry's customizations"
+CUSTOM_END_TAG   = "# <<< Henry's customizations"
 
 # URLs for downloads
-FIRA_CODE_URL = "https://github.com/tonsky/FiraCode/releases/download/6.2/Fira_Code_v6.2.zip"
+FIRA_CODE_URL       = "https://github.com/tonsky/FiraCode/releases/download/6.2/Fira_Code_v6.2.zip"
 KITTY_ICON_REPO_URL = "https://github.com/k0nserv/kitty-icon/archive/refs/heads/master.zip"
-EMACS_RSS_URL = "https://emacsformacosx.com/atom/release"
+EMACS_RSS_URL       = "https://emacsformacosx.com/atom/release"
+
+# Global mapping of applications to install
+APPLICATIONS = {
+    'kitty': {
+        'name': 'Kitty',
+        'install_method': 'custom',
+        'locations': ['/Applications/Kitty.app', '/opt/homebrew/bin/kitty']
+    },
+    'vim': {
+        'name': 'Vim',
+        'install_method': 'homebrew',
+        'locations': ['/usr/bin/vim', '/opt/homebrew/bin/vim']
+    },
+    'nvim': {
+        'name': 'Neovim',
+        'install_method': 'homebrew',
+        'locations': ['/usr/local/bin/nvim', '/opt/homebrew/bin/nvim']
+    },
+    'zsh': {
+        'name': 'Zsh',
+        'install_method': 'homebrew',
+        'locations': ['/bin/zsh', '/usr/local/bin/zsh', '/opt/homebrew/bin/zsh']
+    },
+    'emacs': {
+        'name': 'Emacs',
+        'install_method': 'custom',
+        'locations': ['/Applications/Emacs.app']
+    }
+}
 
 def print_styled(text: str, color: str, bold: bool = False, underline: bool = False) -> None:
     """Print styled text to the console."""
@@ -161,20 +191,70 @@ async def install_fira_code_font(script_dir: Path) -> None:
     except Exception as e:
         print_styled(f"{CROSS} Fira Code font installation failed: {str(e)}", Colors.FAIL)
 
-async def install_kitty_icon(script_dir: Path) -> None:
+async def install_kitty(script_dir: Path) -> None:
+    """Install Kitty terminal emulator and set up the application bundle."""
+    print_styled(f"\n{ARROW} Installing Kitty...", Colors.HEADER, bold=True)
+
+    try:
+        # Install Kitty using Homebrew
+        returncode, _, stderr = await run_command(['brew', 'install', 'kitty'])
+        if returncode != 0:
+            raise Exception(f"Kitty installation failed: {stderr}")
+
+        # Find the Kitty executable
+        returncode, stdout, _ = await run_command(['which', 'kitty'])
+        if returncode != 0:
+            raise Exception("Kitty executable not found after installation")
+
+        kitty_exec = stdout.strip()
+
+        # Create the Applications directory if it doesn't exist
+        applications_dir = Path("/Applications")
+        applications_dir.mkdir(exist_ok=True)
+
+        # Create the Kitty.app bundle
+        kitty_app_path = applications_dir / "Kitty.app"
+        if kitty_app_path.exists():
+            shutil.rmtree(kitty_app_path)
+
+        kitty_app_path.mkdir(parents=True)
+        (kitty_app_path / "Contents" / "MacOS").mkdir(parents=True)
+
+        # Create a launch script
+        launch_script = kitty_app_path / "Contents" / "MacOS" / "kitty"
+        with open(launch_script, 'w') as f:
+            f.write(f"#!/bin/sh\nexec {kitty_exec} \"$@\"")
+        launch_script.chmod(0o755)
+
+        # Create the Info.plist file
+        info_plist_path = kitty_app_path / "Contents" / "Info.plist"
+        info_plist = {
+            'CFBundleName': 'Kitty',
+            'CFBundleDisplayName': 'Kitty',
+            'CFBundleIdentifier': 'net.kovidgoyal.kitty',
+            'CFBundleExecutable': 'kitty',
+            'CFBundleIconFile': 'kitty.icns',
+            'CFBundlePackageType': 'APPL',
+        }
+        with open(info_plist_path, 'wb') as f:
+            plistlib.dump(info_plist, f)
+
+        print_styled(f"{CHECK} Kitty installed successfully", Colors.OKGREEN)
+
+        # Install custom Kitty icon
+        await install_kitty_icon(script_dir, kitty_app_path)
+
+    except Exception as e:
+        print_styled(f"{CROSS} Kitty installation failed: {str(e)}", Colors.FAIL)
+
+async def install_kitty_icon(script_dir: Path, kitty_app_path: Path) -> None:
     """Download and install custom Kitty icon."""
     print_styled(f"\n{ARROW} Installing custom Kitty icon...", Colors.HEADER, bold=True)
     downloads_dir = script_dir / "downloads" / "repos"
     downloads_dir.mkdir(parents=True, exist_ok=True)
     kitty_icon_zip = downloads_dir / "kitty-icon.zip"
-    kitty_icon_dir = downloads_dir / "kitty-icon"
 
     try:
-        kitty_app_path = Path("/Applications/kitty.app")
-        if not kitty_app_path.exists():
-            print_styled(f"{CROSS} Kitty.app not found in /Applications. Skipping icon installation.", Colors.WARNING)
-            return
-
         download_file(KITTY_ICON_REPO_URL, kitty_icon_zip)
         extract_zip(kitty_icon_zip, downloads_dir)
         kitty_icon_dir = next(downloads_dir.glob('kitty-icon-*'))  # Find the extracted directory
@@ -183,24 +263,10 @@ async def install_kitty_icon(script_dir: Path) -> None:
         if not icon_path.exists():
             raise FileNotFoundError("neue_outrun.icns not found in the downloaded repository")
 
-        # Update Kitty.app icon
-        info_plist_path = kitty_app_path / "Contents" / "Info.plist"
-
-        # Check if we have permission to modify the Info.plist file
-        if not os.access(str(info_plist_path), os.W_OK):
-            print_styled(f"{CROSS} Permission denied to modify Kitty.app. Please run the script with sudo.", Colors.FAIL)
-            return
-
-        with open(info_plist_path, 'rb') as f:
-            info_plist = plistlib.load(f)
-
-        info_plist['CFBundleIconFile'] = 'neue_outrun.icns'
-
-        with open(info_plist_path, 'wb') as f:
-            plistlib.dump(info_plist, f)
-
         # Copy the new icon to Kitty.app
-        shutil.copy2(icon_path, kitty_app_path / "Contents" / "Resources" / "neue_outrun.icns")
+        dest_icon_path = kitty_app_path / "Contents" / "Resources" / "kitty.icns"
+        dest_icon_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(icon_path, dest_icon_path)
 
         # Clear icon cache and restart Dock
         await run_command(['rm', '-rf', '/var/folders/*/*/*/com.apple.dock.iconcache'])
@@ -209,7 +275,6 @@ async def install_kitty_icon(script_dir: Path) -> None:
         print_styled(f"{CHECK} Custom Kitty icon installed successfully", Colors.OKGREEN)
     except Exception as e:
         print_styled(f"{CROSS} Custom Kitty icon installation failed: {str(e)}", Colors.FAIL)
-        print_styled("You may need to run the script with sudo or grant permissions to modify /Applications", Colors.WARNING)
 
 async def install_emacs(script_dir: Path) -> None:
     """Download and install the latest version of Emacs."""
@@ -219,7 +284,7 @@ async def install_emacs(script_dir: Path) -> None:
     emacs_app_path = Path("/Applications/Emacs.app")
     if emacs_app_path.exists():
         print_styled(f"{CHECK} Emacs is already installed. Skipping installation.", Colors.OKGREEN)
-        print_styled("Please check for updates manually.", Colors.WARNING)
+        print_styled(" >> Please check for updates manually. <<", Colors.ORANGE)
         return
 
     try:
@@ -268,27 +333,31 @@ async def install_emacs(script_dir: Path) -> None:
 
 async def install_software(script_dir: Path) -> None:
     """Install all required software."""
-    brew_packages = ['kitty', 'vim', 'neovim', 'zsh']
-
     if not await install_homebrew():
         print_styled("Homebrew installation failed. Skipping package installations.", Colors.FAIL)
         return
 
     await install_fira_code_font(script_dir)
-    await install_kitty_icon(script_dir)
-    await install_emacs(script_dir)
+    await install_kitty(script_dir)
 
-    for package in brew_packages:
-        if await is_package_installed(package):
-            print_styled(f"{CHECK} {package} is already installed. Updating...", Colors.OKGREEN)
-            await run_command(['brew', 'upgrade', package])
-        else:
-            await install_brew_package(package)
+    for app_key, app_info in APPLICATIONS.items():
+        if app_key == 'kitty':
+            continue  # Skip Kitty as it's handled separately
+        if app_info['install_method'] == 'homebrew':
+            if not await is_package_installed(app_key):
+                await install_brew_package(app_key)
+            else:
+                print_styled(f"{CHECK} {app_info['name']} is already installed. Updating...", Colors.OKGREEN)
+                await run_command(['brew', 'upgrade', app_key])
+        elif app_info['install_method'] == 'custom' and app_key == 'emacs':
+            await install_emacs(script_dir)
 
 async def is_package_installed(package: str) -> bool:
     """Check if a package is already installed."""
-    returncode, _, _ = await run_command(['brew', 'list', package])
-    return returncode == 0
+    for location in APPLICATIONS[package]['locations']:
+        if os.path.exists(location):
+            return True
+    return False
 
 def extract_custom_sections(content: str) -> List[str]:
     """Extract all custom sections from the content."""
@@ -443,15 +512,17 @@ async def cleanup_and_finalize() -> None:
 
     # Set ZSH as the default shell
     print_styled(f"\n{ARROW} Setting ZSH as the default shell...", Colors.OKBLUE)
-    zsh_path = '/opt/homebrew/bin/zsh'
-    try:
-        if os.path.exists(zsh_path):
+    zsh_paths = APPLICATIONS['zsh']['locations']
+    zsh_path = next((path for path in zsh_paths if os.path.exists(path)), None)
+
+    if zsh_path:
+        try:
             subprocess.run(['chsh', '-s', zsh_path])
             print_styled(f"  {CHECK} ZSH set as default shell", Colors.OKGREEN)
-        else:
-            print_styled(f"  {CROSS} ZSH not found at {zsh_path}", Colors.FAIL)
-    except Exception as e:
-        print_styled(f"  {CROSS} Failed to set ZSH as default: {str(e)}", Colors.FAIL)
+        except Exception as e:
+            print_styled(f"  {CROSS} Failed to set ZSH as default: {str(e)}", Colors.FAIL)
+    else:
+        print_styled(f"  {CROSS} ZSH not found in any of the expected locations", Colors.FAIL)
 
     # Clear and rebuild Homebrew cache
     print_styled(f"\n{ARROW} Cleaning up Homebrew...", Colors.OKBLUE)
@@ -463,15 +534,15 @@ async def cleanup_and_finalize() -> None:
 
     # Verify installations
     print_styled(f"\n{ARROW} Verifying installations...", Colors.OKBLUE)
-    for package in ['kitty', 'emacs', 'vim', 'nvim', 'zsh']:
-        try:
-            result = await run_command(['which', package])
-            if result[0] == 0:
-                print_styled(f"  {CHECK} {package} is installed", Colors.OKGREEN)
-            else:
-                print_styled(f"  {CROSS} {package} not found", Colors.FAIL)
-        except Exception as e:
-            print_styled(f"  {CROSS} Failed to verify {package}: {str(e)}", Colors.FAIL)
+    for app_key, app_info in APPLICATIONS.items():
+        installed = False
+        for location in app_info['locations']:
+            if os.path.exists(location):
+                print_styled(f"  {CHECK} {app_info['name']} is installed", Colors.OKGREEN)
+                installed = True
+                break
+        if not installed:
+            print_styled(f"  {CROSS} {app_info['name']} not found", Colors.FAIL)
 
     # Finalization message
     print_styled(f"\n{ARROW} Finalization complete", Colors.OKBLUE)
@@ -529,7 +600,8 @@ async def main(args: argparse.Namespace) -> None:
     print_styled("Installation Summary", Colors.HEADER, bold=True)
     print_styled(f"{'='*50}", Colors.HEADER, bold=True)
     print_styled(f"{CHECK} Successful dotfile operations: {success_count}", Colors.OKGREEN, bold=True)
-    print_styled(f"{CROSS} Failed dotfile operations: {fail_count}", Colors.FAIL, bold=True)
+    if fail_count > 0:
+        print_styled(f"{CROSS} Failed dotfile operations: {fail_count}", Colors.FAIL, bold=True)
     print_styled(f"Backup directory: {backup_dir}", Colors.WARNING)
 
     print_styled("\nInstallation process completed!", Colors.HEADER, bold=True)
@@ -537,8 +609,8 @@ async def main(args: argparse.Namespace) -> None:
     print_styled("It's recommended to restart your system to ensure all changes take effect.", Colors.WARNING)
 
     # Ask user if they want to clear backups
-    clear_backups_input = input("\nDo you want to clear all backups? (yes/no): ").lower()
-    if clear_backups_input == 'yes':
+    clear_backups_input = input("\nDo you want to clear all backups? [y]es/[n]o: ").lower()
+    if clear_backups_input == 'yes' or clear_backups_input == 'y':
         clear_backups(script_dir)
     else:
         print_styled("You can clear the backups later by running:", Colors.WARNING)
