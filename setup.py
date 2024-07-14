@@ -211,7 +211,7 @@ async def install_kitty_icon(script_dir: Path) -> None:
 
 async def install_software(script_dir: Path) -> None:
     """Install all required software."""
-    brew_packages = ['kitty', 'emacs', 'vim', 'neovim', 'zsh']
+    brew_packages = ['kitty', 'vim', 'neovim', 'zsh']
 
     if not await install_homebrew():
         print_styled("Homebrew installation failed. Skipping package installations.", Colors.FAIL)
