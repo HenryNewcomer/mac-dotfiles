@@ -65,10 +65,13 @@ def print_header():
 """
     print(header)
 
-def create_backup_dir(script_dir: Path) -> Path:
+def create_backup_dir(script_dir: Path, standalone: bool = False) -> Path:
     """Create a timestamped backup directory."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_dir = script_dir / "backups" / timestamp
+    if standalone:
+        backup_dir = script_dir / "backups" / "_standalones" / timestamp
+    else:
+        backup_dir = script_dir / "backups" / timestamp
     backup_dir.mkdir(parents=True, exist_ok=True)
     return backup_dir
 
@@ -95,15 +98,41 @@ def extract_zip(zip_path: Path, extract_to: Path) -> None:
         zip_ref.extractall(extract_to)
 
 async def install_homebrew() -> bool:
-    """Install Homebrew package manager."""
-    print_styled(f"\n{ARROW} Installing Homebrew...", Colors.HEADER, bold=True)
-    install_script = '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
-    returncode, _, stderr = await run_command(['/bin/bash', '-c', install_script])
+    """Install or update Homebrew package manager."""
+    print_styled(f"\n{ARROW} Checking Homebrew installation...", Colors.HEADER, bold=True)
+
+    # Check if Homebrew is already installed
+    returncode, stdout, _ = await run_command(['which', 'brew'])
+
     if returncode == 0:
-        print_styled(f"{CHECK} Homebrew installed successfully", Colors.OKGREEN)
+        print_styled(f"{CHECK} Homebrew is already installed. Updating...", Colors.OKGREEN)
+        update_cmd = ['brew', 'update']
+    else:
+        print_styled("Homebrew not found. Installing...", Colors.WARNING)
+        install_script = '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+        update_cmd = ['/bin/bash', '-c', install_script]
+
+    print_styled("This may take a few minutes. Please enter your password if prompted.", Colors.WARNING)
+
+    process = await asyncio.create_subprocess_exec(
+        *update_cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT
+    )
+
+    while True:
+        line = await process.stdout.readline()
+        if not line:
+            break
+        print(line.decode().strip())
+
+    await process.wait()
+
+    if process.returncode == 0:
+        print_styled(f"{CHECK} Homebrew {'updated' if returncode == 0 else 'installed'} successfully", Colors.OKGREEN)
         return True
     else:
-        print_styled(f"{CROSS} Homebrew installation failed: {stderr}", Colors.FAIL)
+        print_styled(f"{CROSS} Homebrew {'update' if returncode == 0 else 'installation'} failed", Colors.FAIL)
         return False
 
 async def install_brew_package(package: str) -> None:
@@ -190,6 +219,51 @@ def extract_custom_sections(content: str) -> List[str]:
     pattern = re.compile(f"{CUSTOM_START_TAG}.*?{CUSTOM_END_TAG}", re.DOTALL)
     return pattern.findall(content)
 
+def get_dotfiles_list(dotfiles_dir: Path) -> List[Path]:
+    """Get a list of all dotfiles in the repository."""
+    return [f for f in dotfiles_dir.rglob('*') if f.is_file()]
+
+def backup_dotfiles(script_dir: Path, home_dir: Path, standalone: bool = False) -> Tuple[int, int]:
+    """Backup dotfiles from the home directory to the backup directory."""
+    dotfiles_dir = script_dir / "dotfiles"
+    backup_dir = create_backup_dir(script_dir, standalone)
+
+    print_styled(f"\n{'='*50}", Colors.HEADER, bold=True)
+    print_styled("Backing up Dotfiles", Colors.HEADER, bold=True)
+    print_styled(f"{'='*50}\n", Colors.HEADER, bold=True)
+
+    success_count = 0
+    fail_count = 0
+
+    for dotfile in get_dotfiles_list(dotfiles_dir):
+        rel_path = dotfile.relative_to(dotfiles_dir)
+        src_path = home_dir / rel_path
+        dest_path = backup_dir / rel_path
+
+        print_styled(f"Backing up: {rel_path}", Colors.OKBLUE)
+
+        try:
+            if src_path.exists():
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_path, dest_path)
+                print_styled(f"  {CHECK} Backed up successfully", Colors.OKGREEN)
+                success_count += 1
+            else:
+                print_styled(f"  {CROSS} Source file not found", Colors.WARNING)
+                fail_count += 1
+        except Exception as e:
+            print_styled(f"  {CROSS} Backup failed: {str(e)}", Colors.FAIL)
+            fail_count += 1
+
+        print()  # Empty line for readability
+
+    print_styled(f"\nBackup Summary:", Colors.HEADER, bold=True)
+    print_styled(f"{CHECK} Successfully backed up: {success_count}", Colors.OKGREEN)
+    print_styled(f"{CROSS} Failed to back up: {fail_count}", Colors.FAIL)
+    print_styled(f"Backup directory: {backup_dir}", Colors.WARNING)
+
+    return success_count, fail_count
+
 def process_dotfiles(script_dir: Path, home_dir: Path, backup_dir: Path) -> Tuple[int, int]:
     """Process and deploy dotfiles."""
     success_count = 0
@@ -200,44 +274,42 @@ def process_dotfiles(script_dir: Path, home_dir: Path, backup_dir: Path) -> Tupl
     print_styled(f"{'='*50}\n", Colors.HEADER, bold=True)
 
     dotfiles_dir = script_dir / "dotfiles"
-    for root, _, files in os.walk(dotfiles_dir):
-        for file in files:
-            src_path = Path(root) / file
-            rel_path = src_path.relative_to(dotfiles_dir)
-            dest_path = Path(home_dir) / rel_path
+    for dotfile in get_dotfiles_list(dotfiles_dir):
+        rel_path = dotfile.relative_to(dotfiles_dir)
+        dest_path = home_dir / rel_path
 
-            print_styled(f"Processing: {rel_path}", Colors.OKBLUE)
+        print_styled(f"Processing: {rel_path}", Colors.OKBLUE)
 
-            try:
-                with open(src_path, 'r') as src_file:
-                    custom_sections = extract_custom_sections(src_file.read())
+        try:
+            with open(dotfile, 'r') as src_file:
+                custom_sections = extract_custom_sections(src_file.read())
 
-                if dest_path.exists():
-                    # Backup existing file
-                    backup_path = backup_dir / rel_path
-                    backup_path.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(str(dest_path), str(backup_path))
-                    print_styled(f"  {CHECK} Backed up existing file", Colors.OKGREEN)
+            if dest_path.exists():
+                # Backup existing file
+                backup_path = backup_dir / rel_path
+                backup_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(str(dest_path), str(backup_path))
+                print_styled(f"  {CHECK} Backed up existing file", Colors.OKGREEN)
 
-                    # Append custom sections
-                    with open(dest_path, 'a') as dest_file:
-                        for section in custom_sections:
-                            dest_file.write(f"\n\n{section}\n")
-                else:
-                    # Create new file with custom sections
-                    dest_path.parent.mkdir(parents=True, exist_ok=True)
-                    with open(dest_path, 'w') as dest_file:
-                        for section in custom_sections:
-                            dest_file.write(f"{section}\n\n")
+                # Append custom sections
+                with open(dest_path, 'a') as dest_file:
+                    for section in custom_sections:
+                        dest_file.write(f"\n\n{section}\n")
+            else:
+                # Create new file with custom sections
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(dest_path, 'w') as dest_file:
+                    for section in custom_sections:
+                        dest_file.write(f"{section}\n\n")
 
-                print_styled(f"  {CHECK} Added/updated custom content", Colors.OKGREEN)
-                success_count += 1
+            print_styled(f"  {CHECK} Added/updated custom content", Colors.OKGREEN)
+            success_count += 1
 
-            except Exception as e:
-                print_styled(f"  {CROSS} Error: {str(e)}", Colors.FAIL)
-                fail_count += 1
+        except Exception as e:
+            print_styled(f"  {CROSS} Error: {str(e)}", Colors.FAIL)
+            fail_count += 1
 
-            print()  # Empty line for readability
+        print()  # Empty line for readability
 
     return success_count, fail_count
 
@@ -250,7 +322,7 @@ def update_dotfiles(script_dir: Path, home_dir: Path, dotfiles: List[str] = None
     print_styled(f"{'='*50}\n", Colors.HEADER, bold=True)
 
     if dotfiles is None or len(dotfiles) == 0:
-        dotfiles = [str(f.relative_to(dotfiles_dir)) for f in dotfiles_dir.rglob('*') if f.is_file()]
+        dotfiles = [str(f.relative_to(dotfiles_dir)) for f in get_dotfiles_list(dotfiles_dir)]
         print_styled("No specific dotfiles provided. Updating all dotfiles.", Colors.WARNING)
 
     updated_count = 0
@@ -331,11 +403,15 @@ async def cleanup_and_finalize() -> None:
 def clear_backups(script_dir: Path) -> None:
     """Clear all backup directories."""
     backup_dir = script_dir / "backups"
+
     if backup_dir.exists():
-        shutil.rmtree(backup_dir)
-        print_styled(f"{CHECK} Backup directory cleared", Colors.OKGREEN)
+        try:
+            shutil.rmtree(backup_dir)
+            print_styled(f"{CHECK} Backups directory cleared successfully", Colors.OKGREEN)
+        except Exception as e:
+            print_styled(f"{CROSS} Failed to clear backups: {str(e)}", Colors.FAIL)
     else:
-        print_styled("No backup directory found", Colors.WARNING)
+        print_styled("No backups directory found", Colors.WARNING)
 
 async def main(args: argparse.Namespace) -> None:
     """Main function to orchestrate the setup process."""
@@ -348,6 +424,10 @@ async def main(args: argparse.Namespace) -> None:
         clear_backups(script_dir)
         return
 
+    if args.backup:
+        backup_dotfiles(script_dir, home_dir, standalone=True)
+        return
+
     if args.update is not None:
         update_dotfiles(script_dir, home_dir, args.update)
         return
@@ -355,6 +435,9 @@ async def main(args: argparse.Namespace) -> None:
     backup_dir = create_backup_dir(script_dir)
 
     print_styled("Starting Dotfiles and Software Installation", Colors.HEADER, bold=True, underline=True)
+
+    # Backup existing dotfiles
+    backup_dotfiles(script_dir, home_dir)
 
     # Install software
     await install_software(script_dir)
@@ -377,17 +460,20 @@ async def main(args: argparse.Namespace) -> None:
     print_styled("It's recommended to restart your system to ensure all changes take effect.", Colors.WARNING)
 
     # Ask user if they want to clear backups
-    clear_backups_input = input("\nDo you want to clear the backup directory? (yes/no): ").lower()
+    clear_backups_input = input("\nDo you want to clear the backup directories? (yes/no): ").lower()
     if clear_backups_input == 'yes':
         clear_backups(script_dir)
     else:
         print_styled("You can clear the backups later by running:", Colors.WARNING)
         print_styled(f"./setup.py --clear", Colors.OKBLUE)
 
-if __name__ == "__main__":
+def get_args():
     parser = argparse.ArgumentParser(description="Dotfiles and software installation script")
     parser.add_argument("--clear", action="store_true", help="Clear all backups and exit")
     parser.add_argument("--update", nargs='*', help="Update specified dotfiles in the repository, or all if none specified")
-    args = parser.parse_args()
+    parser.add_argument("--backup", action="store_true", help="Perform a standalone backup of dotfiles")
+    return parser.parse_args()
 
+if __name__ == "__main__":
+    args = get_args()
     asyncio.run(main(args))
