@@ -360,8 +360,8 @@ async def is_package_installed(package: str) -> bool:
     return False
 
 def extract_custom_sections(content: str) -> List[str]:
-    """Extract all custom sections from the content."""
-    pattern = re.compile(f"{CUSTOM_START_TAG}.*?{CUSTOM_END_TAG}", re.DOTALL)
+    """Extract all custom sections from the content, including tags."""
+    pattern = re.compile(f"({re.escape(CUSTOM_START_TAG)}.*?{re.escape(CUSTOM_END_TAG)})", re.DOTALL)
     return pattern.findall(content)
 
 def get_dotfiles_list(dotfiles_dir: Path) -> List[Path]:
@@ -437,8 +437,16 @@ def process_dotfiles(script_dir: Path, home_dir: Path, backup_dir: Path) -> Tupl
                 shutil.copy2(str(dest_path), str(backup_path))
                 print_styled(f"  {CHECK} Backed up existing file", Colors.OKGREEN)
 
-                # Append custom sections
-                with open(dest_path, 'a') as dest_file:
+                # Read existing content
+                with open(dest_path, 'r') as dest_file:
+                    existing_content = dest_file.read()
+
+                # Remove existing custom sections
+                cleaned_content = remove_custom_sections(existing_content)
+
+                # Append new custom sections
+                with open(dest_path, 'w') as dest_file:
+                    dest_file.write(cleaned_content)
                     for section in custom_sections:
                         dest_file.write(f"\n\n{section}\n")
             else:
@@ -458,6 +466,11 @@ def process_dotfiles(script_dir: Path, home_dir: Path, backup_dir: Path) -> Tupl
         print()  # Empty line for readability
 
     return success_count, fail_count
+
+def remove_custom_sections(content: str) -> str:
+    """Remove all custom sections from the content."""
+    pattern = re.compile(f"{re.escape(CUSTOM_START_TAG)}.*?{re.escape(CUSTOM_END_TAG)}\n?", re.DOTALL)
+    return pattern.sub('', content).strip()
 
 def update_dotfiles(script_dir: Path, home_dir: Path, dotfiles: List[str] = None) -> None:
     """Update specified dotfiles in the repository from the home directory."""
