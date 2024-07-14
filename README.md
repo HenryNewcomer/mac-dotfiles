@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-This script provides a comprehensive solution for managing my dotfiles, installing software, and setting up a macOS environment. It allows you to easily deploy your dotfiles, update them, and install necessary software with a single command.
+This project provides a comprehensive solution for managing my dotfiles, installing software, and setting up a macOS environment. It allows you to easily deploy your dotfiles, update them, and install necessary software with a single command. The script is available in both Python and Bash versions for flexibility.
 
 ## Features
 
@@ -16,33 +16,40 @@ This script provides a comprehensive solution for managing my dotfiles, installi
 
 ## Prerequisites
 
-- Python 3.7 or higher
 - macOS operating system
 - Internet connection for software installation
+
+For Python version:
+- Python 3.7 or higher
+
+For Bash version:
+- Bash shell (comes pre-installed on macOS)
 
 ## Installation
 
 1. Clone this repository to your local machine:
    ```
-   git clone https://github.com/yourusername/macos-dotfiles-manager.git
-   cd macos-dotfiles-manager
+   git clone https://github.com/HenryNewcomer/mac-dotfiles.git
+   cd mac-dotfiles
    ```
 
-2. Ensure the script has executable permissions:
+2. Ensure the scripts have executable permissions:
    ```
-   chmod +x setup.py
+   chmod +x setup.py setup.sh
    ```
 
 ## Usage
 
-You can run the script in two ways:
+You can use either the Python or Bash version of the script:
 
-1. Directly (make sure the script is executable):
+### Python Version
+
+1. Run the script directly:
    ```
    ./setup.py
    ```
 
-2. Using Python:
+2. Or use Python explicitly:
    ```
    python setup.py
    ```
@@ -51,15 +58,20 @@ You can run the script in two ways:
    python3 setup.py
    ```
 
-Choose the method that works best for your system configuration.
+### Bash Version
+
+Run the script directly:
+```
+./setup.sh
+```
+
+Choose the version that works best for your system configuration.
 
 ### Deploy Dotfiles and Install Software
 
 To deploy your dotfiles and install software:
 
-```
-./setup.py
-```
+Python: `./setup.py` or Bash: `./setup.sh`
 
 This command will:
 - Install Homebrew (if not already installed)
@@ -74,20 +86,22 @@ This command will:
 
 To update specific dotfiles in the repository from your home directory:
 
-```
-./setup.py --update [file1] [file2] ...
-```
+Python: `./setup.py --update [file1] [file2] ...`
+Bash: `./setup.sh --update [file1] [file2] ...`
 
 For example:
 ```
 ./setup.py --update .zshrc .vimrc "config/kitty/kitty.conf"
 ```
+or
+```
+./setup.sh --update .zshrc .vimrc "config/kitty/kitty.conf"
+```
 
 To update all dotfiles in the repository:
 
-```
-./setup.py --update
-```
+Python: `./setup.py --update`
+Bash: `./setup.sh --update`
 
 This will check for all files in the `dotfiles` directory and update them from your home directory. The update process will only modify the content between the custom tags in each file.
 
@@ -95,13 +109,13 @@ This will check for all files in the `dotfiles` directory and update them from y
 
 To clear all backup directories:
 
-```
-./setup.py --clear
-```
+Python: `./setup.py --clear`
+Bash: `./setup.sh --clear`
 
 ## Directory Structure
 
-- `setup.py`: The main script
+- `setup.py`: The main Python script
+- `setup.sh`: The main Bash script
 - `dotfiles/`: Directory containing your dotfiles
 - `backups/`: Directory where backups are stored (created automatically)
 
@@ -109,7 +123,7 @@ To clear all backup directories:
 
 ### Adding New Software
 
-To add new software for installation, modify the `install_software` function in `setup.py`. Add the package name to the `brew_packages` list or create a new installation function for more complex installations.
+To add new software for installation, modify the `install_software` function in either `setup.py` or `setup.sh`. Add the package name to the list of applications to install or create a new installation function for more complex installations.
 
 ### Modifying Dotfiles
 
