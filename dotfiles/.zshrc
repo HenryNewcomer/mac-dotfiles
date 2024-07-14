@@ -14,3 +14,8 @@ function tat {
     tmux new-session -s "$name"
   fi
 }
+
+# Manually add environment variable for Python
+export PATH="/opt/homebrew/bin/python3:$PATH"
+alias python=python3
+alias py=python3
