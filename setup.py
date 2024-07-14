@@ -340,6 +340,9 @@ async def install_software(script_dir: Path) -> None:
     await install_fira_code_font(script_dir)
     await install_kitty(script_dir)
 
+    # Add an extra blank line after Kitty installation for readability
+    print()
+
     for app_key, app_info in APPLICATIONS.items():
         if app_key == 'kitty':
             continue  # Skip Kitty as it's handled separately
@@ -428,7 +431,7 @@ def process_dotfiles(script_dir: Path, home_dir: Path, backup_dir: Path) -> Tupl
 
         try:
             with open(dotfile, 'r') as src_file:
-                custom_sections = extract_custom_sections(src_file.read())
+                src_content = src_file.read()
 
             if dest_path.exists():
                 # Backup existing file
@@ -441,22 +444,36 @@ def process_dotfiles(script_dir: Path, home_dir: Path, backup_dir: Path) -> Tupl
                 with open(dest_path, 'r') as dest_file:
                     existing_content = dest_file.read()
 
+                # Check if custom tags already exist
+                start_tag_exists = CUSTOM_START_TAG in existing_content
+                end_tag_exists = CUSTOM_END_TAG in existing_content
+
                 # Remove existing custom sections
                 cleaned_content = remove_custom_sections(existing_content)
 
-                # Append new custom sections
+                # Append new content, reusing existing tags if present
                 with open(dest_path, 'w') as dest_file:
                     dest_file.write(cleaned_content)
-                    for section in custom_sections:
-                        dest_file.write(f"\n\n{section}\n")
+                    if cleaned_content and not cleaned_content.endswith('\n'):
+                        dest_file.write('\n')
+                    if start_tag_exists:
+                        dest_file.write(f"\n{CUSTOM_START_TAG}\n")
+                    else:
+                        dest_file.write(f"\n{CUSTOM_START_TAG}\n")
+                    dest_file.write(src_content)
+                    if end_tag_exists:
+                        dest_file.write(f"\n{CUSTOM_END_TAG}\n")
+                    else:
+                        dest_file.write(f"\n{CUSTOM_END_TAG}\n")
             else:
-                # Create new file with custom sections
+                # Create new file with content and custom tags
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(dest_path, 'w') as dest_file:
-                    for section in custom_sections:
-                        dest_file.write(f"{section}\n\n")
+                    dest_file.write(f"{CUSTOM_START_TAG}\n")
+                    dest_file.write(src_content)
+                    dest_file.write(f"\n{CUSTOM_END_TAG}\n")
 
-            print_styled(f"  {CHECK} Added/updated custom content", Colors.OKGREEN)
+            print_styled(f"  {CHECK} Added/updated content", Colors.OKGREEN)
             success_count += 1
 
         except Exception as e:
