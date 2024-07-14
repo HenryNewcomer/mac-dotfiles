@@ -1,5 +1,3 @@
-# >>> Henry's customizations
-
 # Source: https://juliu.is/a-simple-tmux/
 # Gets the name of the current directory and removes periods, which tmux doesn’t like.
 # If any session with the same name is open, it re-attaches to it.
@@ -16,5 +14,3 @@ function tat {
     tmux new-session -s "$name"
   fi
 }
-
-# <<< Henry's customizations
