@@ -15,7 +15,11 @@ function tat {
   fi
 }
 
-# Manually add environment variable for Python
+# Manually add environment variables for Python
 export PATH="/opt/homebrew/bin/python3:$PATH"
+export PATH="/Library/Frameworks/Python.framework/Versions/3.11/bin/python3:$PATH"
 alias python=python3
-alias py=python3
+
+# TODO: make 'py' alias create and enter a virtual environment, and then calls python3
+alias setpy="python3 -m venv .venv && source .venv/bin/activate"
+alias py="source .venv/bin/activate && python3"
