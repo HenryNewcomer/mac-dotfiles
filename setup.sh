@@ -30,8 +30,8 @@ EMACS_RSS_URL="https://emacsformacosx.com/atom/release"
 declare -A APPLICATIONS
 APPLICATIONS=(
     ["kitty,name"]="Kitty"
-    ["kitty,install_method"]="custom"
-    ["kitty,locations"]="/Applications/Kitty.app /opt/homebrew/bin/kitty"
+    ["kitty,install_method"]="homebrew"
+    ["kitty,locations"]="/Applications/kitty.app /opt/homebrew/bin/kitty"
     ["vim,name"]="Vim"
     ["vim,install_method"]="homebrew"
     ["vim,locations"]="/usr/bin/vim /opt/homebrew/bin/vim"
@@ -152,44 +152,19 @@ install_kitty() {
     local script_dir="$1"
     print_styled "\n$ARROW Installing Kitty..." "$HEADER" "true"
 
-    if brew install kitty; then
-        local kitty_exec=$(which kitty)
-        local applications_dir="/Applications"
-        local kitty_app_path="${applications_dir}/Kitty.app"
+    # Check if Kitty is already installed
+    if brew list kitty &>/dev/null; then
+        print_styled "$CHECK Kitty is already installed. Updating..." "$OKGREEN"
+        brew upgrade kitty
+    else
+        print_styled "Installing Kitty..." "$OKBLUE"
+        brew install kitty
+    fi
 
-        mkdir -p "$applications_dir"
-        [[ -d "$kitty_app_path" ]] && rm -rf "$kitty_app_path"
-        mkdir -p "${kitty_app_path}/Contents/MacOS"
-
-        local launch_script="${kitty_app_path}/Contents/MacOS/kitty"
-        echo "#!/bin/sh
-exec ${kitty_exec} \"\$@\"" > "$launch_script"
-        chmod 755 "$launch_script"
-
-        local info_plist_path="${kitty_app_path}/Contents/Info.plist"
-        cat > "$info_plist_path" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleName</key>
-    <string>Kitty</string>
-    <key>CFBundleDisplayName</key>
-    <string>Kitty</string>
-    <key>CFBundleIdentifier</key>
-    <string>net.kovidgoyal.kitty</string>
-    <key>CFBundleExecutable</key>
-    <string>kitty</string>
-    <key>CFBundleIconFile</key>
-    <string>kitty.icns</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-</dict>
-</plist>
-EOF
-
+    if [ $? -eq 0 ]; then
         print_styled "$CHECK Kitty installed successfully" "$OKGREEN"
-        install_kitty_icon "$script_dir" "$kitty_app_path"
+        # Install the custom icon
+        install_kitty_icon "$script_dir"
     else
         print_styled "$CROSS Kitty installation failed" "$FAIL"
     fi
@@ -197,7 +172,6 @@ EOF
 
 install_kitty_icon() {
     local script_dir="$1"
-    local kitty_app_path="$2"
     print_styled "\n$ARROW Installing custom Kitty icon..." "$HEADER" "true"
     local downloads_dir="${script_dir}/downloads/repos"
     mkdir -p "$downloads_dir"
@@ -207,13 +181,19 @@ install_kitty_icon() {
         local kitty_icon_dir=$(find "$downloads_dir" -type d -name "kitty-icon-*" | head -n 1)
         local icon_path="${kitty_icon_dir}/build/neue_outrun.icns"
 
-        if [[ -f "$icon_path" ]]; then
-            local dest_icon_path="${kitty_app_path}/Contents/Resources/kitty.icns"
-            mkdir -p "$(dirname "$dest_icon_path")"
+        if [ -f "$icon_path" ]; then
+            local kitty_config_dir="${HOME}/.config/kitty"
+            mkdir -p "$kitty_config_dir"
+            local dest_icon_path="${kitty_config_dir}/kitty.app.icns"
             cp "$icon_path" "$dest_icon_path"
+
+            print_styled "$CHECK Custom Kitty icon installed successfully" "$OKGREEN"
+            print_styled "The icon will be applied automatically when Kitty starts." "$OKBLUE"
+            print_styled "You may need to restart Kitty for the changes to take effect." "$WARNING"
+
+            # Clear icon cache and restart Dock
             rm -rf /var/folders/*/*/*/com.apple.dock.iconcache
             killall Dock
-            print_styled "$CHECK Custom Kitty icon installed successfully" "$OKGREEN"
         else
             print_styled "$CROSS neue_outrun.icns not found in the downloaded repository" "$FAIL"
         fi
@@ -267,19 +247,18 @@ install_software() {
     fi
 
     install_fira_code_font "$script_dir"
-    install_kitty "$script_dir"
-
-    echo
 
     for app in "${!APPLICATIONS[@]}"; do
         IFS=',' read -r key field <<< "$app"
-        if [[ "$field" == "name" && "$key" != "kitty" ]]; then
+        if [[ "$field" == "name" ]]; then
             local name="${APPLICATIONS[$app]}"
             local install_method="${APPLICATIONS[${key},install_method]}"
             local locations="${APPLICATIONS[${key},locations]}"
 
             if [[ "$install_method" == "homebrew" ]]; then
-                if ! is_package_installed "$locations"; then
+                if [[ "$key" == "kitty" ]]; then
+                    install_kitty "$script_dir"
+                elif ! is_package_installed "$locations"; then
                     install_brew_package "$key"
                 else
                     print_styled "$CHECK $name is already installed. Updating..." "$OKGREEN"
@@ -290,6 +269,9 @@ install_software() {
             fi
         fi
     done
+
+    # Add an extra blank line after software installation
+    echo
 }
 
 is_package_installed() {
