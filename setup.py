@@ -46,8 +46,8 @@ EMACS_RSS_URL       = "https://emacsformacosx.com/atom/release"
 APPLICATIONS = {
     'kitty': {
         'name': 'Kitty',
-        'install_method': 'custom',
-        'locations': ['/Applications/Kitty.app', '/opt/homebrew/bin/kitty']
+        'install_method': 'homebrew',
+        'locations': ['/Applications/kitty.app', '/opt/homebrew/bin/kitty']
     },
     'vim': {
         'name': 'Vim',
@@ -192,62 +192,33 @@ async def install_fira_code_font(script_dir: Path) -> None:
         print_styled(f"{CROSS} Fira Code font installation failed: {str(e)}", Colors.FAIL)
 
 async def install_kitty(script_dir: Path) -> None:
-    """Install Kitty terminal emulator and set up the application bundle."""
+    """Install Kitty terminal emulator using Homebrew."""
     print_styled(f"\n{ARROW} Installing Kitty...", Colors.HEADER, bold=True)
 
     try:
-        # Install Kitty using Homebrew
-        returncode, _, stderr = await run_command(['brew', 'install', 'kitty'])
+        # Check if Kitty is already installed
+        returncode, _, _ = await run_command(['brew', 'list', 'kitty'])
+        if returncode == 0:
+            print_styled(f"{CHECK} Kitty is already installed. Updating...", Colors.OKGREEN)
+            cmd = ['brew', 'upgrade', 'kitty']
+        else:
+            print_styled("Installing Kitty...", Colors.OKBLUE)
+            cmd = ['brew', 'install', 'kitty']
+
+        # Install or update Kitty
+        returncode, stdout, stderr = await run_command(cmd)
         if returncode != 0:
             raise Exception(f"Kitty installation failed: {stderr}")
 
-        # Find the Kitty executable
-        returncode, stdout, _ = await run_command(['which', 'kitty'])
-        if returncode != 0:
-            raise Exception("Kitty executable not found after installation")
-
-        kitty_exec = stdout.strip()
-
-        # Create the Applications directory if it doesn't exist
-        applications_dir = Path("/Applications")
-        applications_dir.mkdir(exist_ok=True)
-
-        # Create the Kitty.app bundle
-        kitty_app_path = applications_dir / "Kitty.app"
-        if kitty_app_path.exists():
-            shutil.rmtree(kitty_app_path)
-
-        kitty_app_path.mkdir(parents=True)
-        (kitty_app_path / "Contents" / "MacOS").mkdir(parents=True)
-
-        # Create a launch script
-        launch_script = kitty_app_path / "Contents" / "MacOS" / "kitty"
-        with open(launch_script, 'w') as f:
-            f.write(f"#!/bin/sh\nexec {kitty_exec} \"$@\"")
-        launch_script.chmod(0o755)
-
-        # Create the Info.plist file
-        info_plist_path = kitty_app_path / "Contents" / "Info.plist"
-        info_plist = {
-            'CFBundleName': 'Kitty',
-            'CFBundleDisplayName': 'Kitty',
-            'CFBundleIdentifier': 'net.kovidgoyal.kitty',
-            'CFBundleExecutable': 'kitty',
-            'CFBundleIconFile': 'kitty.icns',
-            'CFBundlePackageType': 'APPL',
-        }
-        with open(info_plist_path, 'wb') as f:
-            plistlib.dump(info_plist, f)
-
         print_styled(f"{CHECK} Kitty installed successfully", Colors.OKGREEN)
 
-        # Install custom Kitty icon
-        await install_kitty_icon(script_dir, kitty_app_path)
+        # Install the custom icon
+        await install_kitty_icon(script_dir)
 
     except Exception as e:
         print_styled(f"{CROSS} Kitty installation failed: {str(e)}", Colors.FAIL)
 
-async def install_kitty_icon(script_dir: Path, kitty_app_path: Path) -> None:
+async def install_kitty_icon(script_dir: Path) -> None:
     """Download and install custom Kitty icon."""
     print_styled(f"\n{ARROW} Installing custom Kitty icon...", Colors.HEADER, bold=True)
     downloads_dir = script_dir / "downloads" / "repos"
@@ -255,24 +226,32 @@ async def install_kitty_icon(script_dir: Path, kitty_app_path: Path) -> None:
     kitty_icon_zip = downloads_dir / "kitty-icon.zip"
 
     try:
+        # Download and extract the kitty-icon repository
         download_file(KITTY_ICON_REPO_URL, kitty_icon_zip)
         extract_zip(kitty_icon_zip, downloads_dir)
         kitty_icon_dir = next(downloads_dir.glob('kitty-icon-*'))  # Find the extracted directory
 
+        # Find the desired icon (e.g., 'neue_outrun.icns')
         icon_path = kitty_icon_dir / "build" / "neue_outrun.icns"
         if not icon_path.exists():
             raise FileNotFoundError("neue_outrun.icns not found in the downloaded repository")
 
-        # Copy the new icon to Kitty.app
-        dest_icon_path = kitty_app_path / "Contents" / "Resources" / "kitty.icns"
-        dest_icon_path.parent.mkdir(parents=True, exist_ok=True)
+        # Determine Kitty config directory
+        kitty_config_dir = Path.home() / ".config" / "kitty"
+        kitty_config_dir.mkdir(parents=True, exist_ok=True)
+
+        # Copy the icon to the Kitty config directory
+        dest_icon_path = kitty_config_dir / "kitty.app.icns"
         shutil.copy2(icon_path, dest_icon_path)
+
+        print_styled(f"{CHECK} Custom Kitty icon installed successfully", Colors.OKGREEN)
+        print_styled("The icon will be applied automatically when Kitty starts.", Colors.OKBLUE)
+        print_styled("You may need to restart Kitty for the changes to take effect.", Colors.WARNING)
 
         # Clear icon cache and restart Dock
         await run_command(['rm', '-rf', '/var/folders/*/*/*/com.apple.dock.iconcache'])
         await run_command(['killall', 'Dock'])
 
-        print_styled(f"{CHECK} Custom Kitty icon installed successfully", Colors.OKGREEN)
     except Exception as e:
         print_styled(f"{CROSS} Custom Kitty icon installation failed: {str(e)}", Colors.FAIL)
 
@@ -338,22 +317,21 @@ async def install_software(script_dir: Path) -> None:
         return
 
     await install_fira_code_font(script_dir)
-    await install_kitty(script_dir)
-
-    # Add an extra blank line after Kitty installation for readability
-    print()
 
     for app_key, app_info in APPLICATIONS.items():
-        if app_key == 'kitty':
-            continue  # Skip Kitty as it's handled separately
         if app_info['install_method'] == 'homebrew':
-            if not await is_package_installed(app_key):
+            if app_key == 'kitty':
+                await install_kitty(script_dir)
+            elif not await is_package_installed(app_key):
                 await install_brew_package(app_key)
             else:
                 print_styled(f"{CHECK} {app_info['name']} is already installed. Updating...", Colors.OKGREEN)
                 await run_command(['brew', 'upgrade', app_key])
         elif app_info['install_method'] == 'custom' and app_key == 'emacs':
             await install_emacs(script_dir)
+
+    # Add an extra blank line after software installation
+    print()
 
 async def is_package_installed(package: str) -> bool:
     """Check if a package is already installed."""
