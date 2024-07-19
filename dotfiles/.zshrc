@@ -23,3 +23,9 @@ alias python=python3
 # TODO: make 'py' alias create and enter a virtual environment, and then calls python3
 alias setpy="python3 -m venv .venv && source .venv/bin/activate"
 alias py="source .venv/bin/activate && python3"
+
+# Manually add environment variables for Emacs
+export PATH="/Applications/Emacs.app/Contents/MacOS:$PATH"
+
+# Generate a private key and a self-signed certificate. (For SSL in MAMP)
+alias gencert="openssl req -x509 -newkey rsa:4096 -keyout localhost.key -out localhost.crt -days 365 -nodes -subj \"/CN=localhost\""
