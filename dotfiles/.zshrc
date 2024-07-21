@@ -3,16 +3,18 @@
 # Custom aliases
 alias dev="cd ~/dev/"
 alias ros="cd ~/dev/rosai && source .venv/bin/activate && python app.py --help"
+
 # Setup Python environment
 alias setpy="python3 -m venv .venv && source .venv/bin/activate"
 alias py="source .venv/bin/activate && python3"
+
 # Generate a private key and a self-signed certificate. (For SSL in MAMP)
 alias gencert="openssl req -x509 -newkey rsa:4096 -keyout localhost.key -out localhost.crt -days 365 -nodes -subj \"/CN=localhost\""
 
 # Manually add environment variables for Python
 export PATH="/opt/homebrew/bin/python3:$PATH"
 export PATH="/Library/Frameworks/Python.framework/Versions/3.11/bin/python3:$PATH"
-alias python=python3
+alias python=python3 # Super weird that I have to add this, but... ¯\_(ツ)_/¯
 
 # Manually add environment variables for Emacs
 export PATH="/Applications/Emacs.app/Contents/MacOS:$PATH"
