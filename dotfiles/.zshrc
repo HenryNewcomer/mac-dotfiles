@@ -1,3 +1,4 @@
+# >>> Henry's customizations
 # Source: https://juliu.is/a-simple-tmux/
 # Gets the name of the current directory and removes periods, which tmux doesn’t like.
 # If any session with the same name is open, it re-attaches to it.
@@ -29,3 +30,5 @@ export PATH="/Applications/Emacs.app/Contents/MacOS:$PATH"
 
 # Generate a private key and a self-signed certificate. (For SSL in MAMP)
 alias gencert="openssl req -x509 -newkey rsa:4096 -keyout localhost.key -out localhost.crt -days 365 -nodes -subj \"/CN=localhost\""
+
+# <<< Henry's customizations

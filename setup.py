@@ -467,7 +467,40 @@ def remove_custom_sections(content: str) -> str:
     pattern = re.compile(f"{re.escape(CUSTOM_START_TAG)}.*?{re.escape(CUSTOM_END_TAG)}\n?", re.DOTALL)
     return pattern.sub('', content).strip()
 
-def update_dotfiles(script_dir: Path, home_dir: Path, dotfiles: List[str] = None) -> None:
+def update_os_dotfiles(script_dir: Path, home_dir: Path) -> None:
+    """Update OS dotfiles from the repository."""
+    dotfiles_dir = script_dir / "dotfiles"
+
+    print_styled(f"\n{'='*50}", Colors.HEADER, bold=True)
+    print_styled("Updating OS Dotfiles", Colors.HEADER, bold=True)
+    print_styled(f"{'='*50}\n", Colors.HEADER, bold=True)
+
+    updated_count = 0
+    failed_count = 0
+
+    for dotfile in get_dotfiles_list(dotfiles_dir):
+        rel_path = dotfile.relative_to(dotfiles_dir)
+        dest_path = home_dir / rel_path
+
+        print_styled(f"Updating: {rel_path}", Colors.OKBLUE)
+
+        try:
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(dotfile, dest_path)
+            print_styled(f"  {CHECK} Updated successfully", Colors.OKGREEN)
+            updated_count += 1
+        except Exception as e:
+            print_styled(f"  {CROSS} Update failed: {str(e)}", Colors.FAIL)
+            failed_count += 1
+
+        print()  # Empty line for readability
+
+    print_styled(f"\nUpdate Summary:", Colors.HEADER, bold=True)
+    print_styled(f"{CHECK} Successfully updated: {updated_count}", Colors.OKGREEN)
+    if failed_count > 0:
+        print_styled(f"{CROSS} Failed to update: {failed_count}", Colors.FAIL)
+
+def update_repo_dotfiles(script_dir: Path, home_dir: Path, dotfiles: List[str] = None) -> None:
     """Update specified dotfiles in the repository from the home directory."""
     dotfiles_dir = script_dir / "dotfiles"
 
@@ -584,8 +617,12 @@ async def main(args: argparse.Namespace) -> None:
         backup_dotfiles(script_dir, home_dir, standalone=True)
         return
 
-    if args.update is not None:
-        update_dotfiles(script_dir, home_dir, args.update)
+    if args.update_repo is not None:
+        update_repo_dotfiles(script_dir, home_dir, args.update_repo)
+        return
+
+    if args.update_os:
+        update_os_dotfiles(script_dir, home_dir)
         return
 
     backup_dir = create_backup_dir(script_dir)
@@ -626,9 +663,10 @@ async def main(args: argparse.Namespace) -> None:
 
 def get_args():
     parser = argparse.ArgumentParser(description="Dotfiles and software installation script")
-    parser.add_argument("--clear", action="store_true", help="Clear all backups and exit")
-    parser.add_argument("--update", nargs='*', help="Update specified dotfiles in the repository, or all if none specified")
-    parser.add_argument("--backup", action="store_true", help="Perform a standalone backup of dotfiles")
+    parser.add_argument("--backup", action="store_true", help="Perform a standalone backup of existing OS dotfiles")
+    parser.add_argument("--clear", action="store_true", help="Clear all backups")
+    parser.add_argument("--update_repo", nargs='*', help="Update specified dotfiles in the repository (from the OS), or ALL if none specified")
+    parser.add_argument("--update_os", action="store_true", help="Update OS dotfiles from the repository")
     return parser.parse_args()
 
 if __name__ == "__main__":

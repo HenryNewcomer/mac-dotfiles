@@ -424,7 +424,7 @@ remove_custom_sections() {
     sed "/$CUSTOM_START_TAG/,/$CUSTOM_END_TAG/d" <<< "$content" | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'
 }
 
-update_dotfiles() {
+update_repo_dotfiles() {
     local script_dir="$1"
     local home_dir="$2"
     shift 2
@@ -469,6 +469,48 @@ update_dotfiles() {
     print_styled "\nUpdate Summary:" "$HEADER" "true"
     print_styled "$CHECK Successfully updated: $updated_count" "$OKGREEN"
     print_styled "$CROSS Failed to update: $failed_count" "$FAIL"
+}
+
+update_os_dotfiles() {
+    local script_dir="$1"
+    local home_dir="$2"
+    local dotfiles_dir="${script_dir}/dotfiles"
+
+    print_styled "\n================================================" "$HEADER" "true"
+    print_styled "Updating OS Dotfiles" "$HEADER" "true"
+    print_styled "================================================\n" "$HEADER" "true"
+
+    local updated_count=0
+    local failed_count=0
+
+    while IFS= read -r dotfile; do
+        local rel_path="${dotfile#$dotfiles_dir/}"
+        local dest_path="${home_dir}/${rel_path}"
+
+        print_styled "Updating: ${rel_path}" "$OKBLUE"
+
+        if [[ -f "$dotfile" ]]; then
+            mkdir -p "$(dirname "$dest_path")"
+            if cp "$dotfile" "$dest_path"; then
+                print_styled "  $CHECK Updated successfully" "$OKGREEN"
+                ((updated_count++))
+            else
+                print_styled "  $CROSS Update failed" "$FAIL"
+                ((failed_count++))
+            fi
+        else
+            print_styled "  $CROSS Source file not found" "$WARNING"
+            ((failed_count++))
+        fi
+
+        echo  # Empty line for readability
+    done < <(get_dotfiles_list "$dotfiles_dir")
+
+    print_styled "\nUpdate Summary:" "$HEADER" "true"
+    print_styled "$CHECK Successfully updated: $updated_count" "$OKGREEN"
+    if [[ $failed_count -gt 0 ]]; then
+        print_styled "$CROSS Failed to update: $failed_count" "$FAIL"
+    fi
 }
 
 cleanup_and_finalize() {
@@ -564,14 +606,18 @@ main() {
                 backup_dotfiles "$script_dir" "$home_dir" "true"
                 exit 0
                 ;;
-            --update)
+            --update_repo)
                 shift
                 local update_files=()
                 while [[ $# -gt 0 && ! "$1" =~ ^-- ]]; do
                     update_files+=("$1")
                     shift
                 done
-                update_dotfiles "$script_dir" "$home_dir" "${update_files[@]}"
+                update_repo_dotfiles "$script_dir" "$home_dir" "${update_files[@]}"
+                exit 0
+                ;;
+            --update_os)
+                update_os_dotfiles "$script_dir" "$home_dir"
                 exit 0
                 ;;
             *)
