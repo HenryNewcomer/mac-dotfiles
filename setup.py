@@ -256,91 +256,52 @@ async def install_kitty_icon(script_dir: Path) -> None:
         print_styled(f"{CROSS} Custom Kitty icon installation failed: {str(e)}", Colors.FAIL)
 
 async def install_emacs(script_dir: Path) -> None:
-    """Download and install the latest version of Emacs from jimeh/emacs-builds."""
-    print_styled(f"\n{ARROW} Installing Emacs...", Colors.HEADER, bold=True)
+    """Install Emacs Plus 30 using Homebrew."""
+    print_styled(f"\n{ARROW} Installing Emacs Plus 30...", Colors.HEADER, bold=True)
 
     try:
-        # Fetch the latest release info
-        api_url = "https://api.github.com/repos/jimeh/emacs-builds/releases/latest"
-        response = requests.get(api_url)
-        response.raise_for_status()
-        release_info = response.json()
+        # Tap the emacs-plus repository
+        print_styled("Tapping emacs-plus repository...", Colors.OKBLUE)
+        await run_command(['brew', 'tap', 'd12frosted/emacs-plus'])
 
-        # Find the arm64 DMG asset
-        dmg_asset = next((asset for asset in release_info['assets'] if 'arm64.dmg' in asset['name']), None)
-        if not dmg_asset:
-            raise Exception("No arm64 DMG found in the latest release")
+        # Uninstall any existing Emacs
+        print_styled("Uninstalling any existing Emacs...", Colors.OKBLUE)
+        await run_command(['brew', 'uninstall', '--force', 'emacs', 'emacs-plus'])
 
-        dmg_url = dmg_asset['browser_download_url']
-        version = release_info['tag_name']
+        # Install Emacs Plus 30
+        print_styled("Installing Emacs Plus 30...", Colors.OKBLUE)
+        install_cmd = [
+            'brew', 'install', 'emacs-plus@30',
+            '--with-xwidgets',
+            '--with-imagemagick',
+            '--with-modern-icon'
+        ]
 
-        print_styled(f"Found Emacs version: {version}", Colors.OKBLUE)
-        print_styled(f"Downloading from: {dmg_url}", Colors.OKBLUE)
-
-        # Download the DMG
-        downloads_dir = script_dir / "downloads" / "emacs"
-        downloads_dir.mkdir(parents=True, exist_ok=True)
-        dmg_path = downloads_dir / f"Emacs-{version}.dmg"
-
-        download_file(dmg_url, dmg_path)
-
-        # Mount the DMG
-        print_styled("Mounting Emacs DMG...", Colors.OKBLUE)
-        mount_process = await asyncio.create_subprocess_exec(
-            'hdiutil', 'attach', str(dmg_path),
+        process = await asyncio.create_subprocess_exec(
+            *install_cmd,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            stderr=asyncio.subprocess.STDOUT
         )
-        stdout, stderr = await mount_process.communicate()
 
-        if mount_process.returncode != 0:
-            raise Exception(f"Failed to mount DMG: {stderr.decode()}")
-
-        # Find the mounted volume
-        mounted_volume = None
-        for line in stdout.decode().split('\n'):
-            if '/Volumes/' in line:
-                mounted_volume = line.split()[-1]
+        while True:
+            line = await process.stdout.readline()
+            if not line:
                 break
+            print(line.decode().strip())
 
-        if not mounted_volume:
-            raise Exception("Failed to find mounted volume")
+        await process.wait()
 
-        print_styled(f"Mounted volume: {mounted_volume}", Colors.OKBLUE)
+        if process.returncode == 0:
+            print_styled(f"{CHECK} Emacs Plus 30 installed successfully", Colors.OKGREEN)
 
-        # Install Emacs
-        print_styled("Installing Emacs...", Colors.OKBLUE)
-        source_path = Path(mounted_volume) / "Emacs.app"
-        dest_path = Path("/Applications/Emacs.app")
+            # Create symlink to Applications folder
+            await run_command(['ln', '-s', '/opt/homebrew/opt/emacs-plus@30/Emacs.app', '/Applications/Emacs.app'])
+            print_styled(f"{CHECK} Symlink created in Applications folder", Colors.OKGREEN)
+        else:
+            raise Exception("Emacs Plus 30 installation failed")
 
-        if not source_path.exists():
-            raise Exception(f"Emacs.app not found in mounted volume: {source_path}")
-
-        if dest_path.exists():
-            print_styled("Removing existing Emacs installation...", Colors.WARNING)
-            shutil.rmtree(dest_path)
-
-        print_styled(f"Copying Emacs.app to {dest_path}...", Colors.OKBLUE)
-        shutil.copytree(source_path, dest_path)
-
-        # Unmount the DMG
-        print_styled("Unmounting Emacs DMG...", Colors.OKBLUE)
-        unmount_process = await asyncio.create_subprocess_exec(
-            'hdiutil', 'detach', mounted_volume,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        await unmount_process.communicate()
-
-        print_styled(f"{CHECK} Emacs {version} installed successfully", Colors.OKGREEN)
     except Exception as e:
-        print_styled(f"{CROSS} Emacs installation failed: {str(e)}", Colors.FAIL)
-    finally:
-        # Ensure DMG is unmounted even if an error occurred
-        try:
-            await run_command(['hdiutil', 'detach', mounted_volume, '-force'])
-        except:
-            pass
+        print_styled(f"{CROSS} Emacs Plus 30 installation failed: {str(e)}", Colors.FAIL)
 
 async def install_software(script_dir: Path) -> None:
     """Install all required software."""
