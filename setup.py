@@ -443,34 +443,32 @@ def process_dotfiles(script_dir: Path, home_dir: Path, backup_dir: Path) -> Tupl
                 with open(dest_path, 'r') as dest_file:
                     existing_content = dest_file.read()
 
-                # Check if custom tags already exist
-                start_tag_exists = CUSTOM_START_TAG in existing_content
-                end_tag_exists = CUSTOM_END_TAG in existing_content
+                # Extract existing custom sections
+                existing_sections = extract_custom_sections(existing_content)
 
-                # Remove existing custom sections
-                cleaned_content = remove_custom_sections(existing_content)
+                # Remove empty or misplaced custom sections
+                cleaned_sections = [section for section in existing_sections if section.strip() != f"{CUSTOM_START_TAG}\n{CUSTOM_END_TAG}"]
 
-                # Append new content, reusing existing tags if present
+                # Prepare new content
+                new_content = remove_custom_sections(existing_content)
+                if new_content and not new_content.endswith('\n'):
+                    new_content += '\n'
+
+                # Append cleaned existing sections and new content
+                new_content += '\n'.join(cleaned_sections)
+                if cleaned_sections:
+                    new_content += '\n'
+                new_content += f"{CUSTOM_START_TAG}\n{src_content.strip()}\n{CUSTOM_END_TAG}\n"
+
+                # Write updated content
                 with open(dest_path, 'w') as dest_file:
-                    dest_file.write(cleaned_content)
-                    if cleaned_content and not cleaned_content.endswith('\n'):
-                        dest_file.write('\n')
-                    if start_tag_exists:
-                        dest_file.write(f"\n{CUSTOM_START_TAG}\n")
-                    else:
-                        dest_file.write(f"\n{CUSTOM_START_TAG}\n")
-                    dest_file.write(src_content)
-                    if end_tag_exists:
-                        dest_file.write(f"\n{CUSTOM_END_TAG}\n")
-                    else:
-                        dest_file.write(f"\n{CUSTOM_END_TAG}\n")
+                    dest_file.write(new_content)
+
             else:
                 # Create new file with content and custom tags
                 dest_path.parent.mkdir(parents=True, exist_ok=True)
                 with open(dest_path, 'w') as dest_file:
-                    dest_file.write(f"{CUSTOM_START_TAG}\n")
-                    dest_file.write(src_content)
-                    dest_file.write(f"\n{CUSTOM_END_TAG}\n")
+                    dest_file.write(f"{CUSTOM_START_TAG}\n{src_content.strip()}\n{CUSTOM_END_TAG}\n")
 
             print_styled(f"  {CHECK} Added/updated content", Colors.OKGREEN)
             success_count += 1
