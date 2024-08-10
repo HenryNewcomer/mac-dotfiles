@@ -256,17 +256,13 @@ async def install_kitty_icon(script_dir: Path) -> None:
         print_styled(f"{CROSS} Custom Kitty icon installation failed: {str(e)}", Colors.FAIL)
 
 async def install_emacs(script_dir: Path) -> None:
-    """Install Emacs Plus 30 using Homebrew."""
+    """Install Emacs Plus 30 using Homebrew and ensure it's discoverable."""
     print_styled(f"\n{ARROW} Installing Emacs Plus 30...", Colors.HEADER, bold=True)
 
     try:
         # Tap the emacs-plus repository
         print_styled("Tapping emacs-plus repository...", Colors.OKBLUE)
         await run_command(['brew', 'tap', 'd12frosted/emacs-plus'])
-
-        # Uninstall any existing Emacs
-        print_styled("Uninstalling any existing Emacs...", Colors.OKBLUE)
-        await run_command(['brew', 'uninstall', '--force', 'emacs', 'emacs-plus'])
 
         # Install Emacs Plus 30
         print_styled("Installing Emacs Plus 30...", Colors.OKBLUE)
@@ -294,9 +290,41 @@ async def install_emacs(script_dir: Path) -> None:
         if process.returncode == 0:
             print_styled(f"{CHECK} Emacs Plus 30 installed successfully", Colors.OKGREEN)
 
-            # Create symlink to Applications folder
-            await run_command(['ln', '-s', '/opt/homebrew/opt/emacs-plus@30/Emacs.app', '/Applications/Emacs.app'])
-            print_styled(f"{CHECK} Symlink created in Applications folder", Colors.OKGREEN)
+            # Remove existing Emacs.app
+            print_styled("Removing existing Emacs.app from Applications...", Colors.OKBLUE)
+            await run_command(['sudo', 'rm', '-rf', '/Applications/Emacs.app'])
+
+            # Copy Emacs.app to Applications
+            print_styled("Copying Emacs.app to Applications folder...", Colors.OKBLUE)
+            await run_command(['sudo', 'cp', '-R', '/opt/homebrew/opt/emacs-plus@30/Emacs.app', '/Applications/'])
+
+            # Change ownership
+            print_styled("Changing ownership of Emacs.app...", Colors.OKBLUE)
+            await run_command(['sudo', 'chown', '-R', f'{os.getlogin()}:staff', '/Applications/Emacs.app'])
+
+            # Force Spotlight to reindex Applications
+            print_styled("Forcing Spotlight to reindex Applications...", Colors.OKBLUE)
+            await run_command(['sudo', 'mdutil', '-E', '/Applications'])
+
+            print_styled(f"{CHECK} Emacs should now be discoverable by Spotlight", Colors.OKGREEN)
+
+            # Restart Alfred
+            print_styled("Restarting Alfred to recognize the new Emacs installation...", Colors.OKBLUE)
+            try:
+                # Quit Alfred
+                subprocess.run(['osascript', '-e', 'tell application "Alfred 5" to quit'])
+                time.sleep(2)  # Wait for Alfred to fully quit
+
+                # Start Alfred
+                subprocess.run(['open', '-a', 'Alfred 5'])
+                time.sleep(2)  # Wait for Alfred to start
+
+                print_styled(f"{CHECK} Alfred has been restarted", Colors.OKGREEN)
+                print_styled("Emacs should now be discoverable in Alfred. If not, please try rebuilding Alfred's cache manually.", Colors.WARNING)
+            except Exception as e:
+                print_styled(f"{CROSS} Failed to restart Alfred: {str(e)}", Colors.WARNING)
+                print_styled("Please restart Alfred manually to recognize the new Emacs installation.", Colors.WARNING)
+
         else:
             raise Exception("Emacs Plus 30 installation failed")
 
