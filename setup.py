@@ -256,34 +256,33 @@ async def install_kitty_icon(script_dir: Path) -> None:
         print_styled(f"{CROSS} Custom Kitty icon installation failed: {str(e)}", Colors.FAIL)
 
 async def install_emacs(script_dir: Path) -> None:
-    """Download and install the latest version of Emacs."""
+    """Download and install the latest version of Emacs from jimeh/emacs-builds."""
     print_styled(f"\n{ARROW} Installing Emacs...", Colors.HEADER, bold=True)
 
-    # Check if Emacs is already installed
-    emacs_app_path = Path("/Applications/Emacs.app")
-    if emacs_app_path.exists():
-        print_styled(f"{CHECK} Emacs is already installed. Skipping installation.", Colors.OKGREEN)
-        print_styled(" >> Please check for updates manually. <<", Colors.ORANGE)
-        return
-
     try:
-        # Fetch the latest Emacs version from the RSS feed
-        response = requests.get(EMACS_RSS_URL)
+        # Fetch the latest release info
+        api_url = "https://api.github.com/repos/jimeh/emacs-builds/releases/latest"
+        response = requests.get(api_url)
         response.raise_for_status()
-        root = ET.fromstring(response.content)
+        release_info = response.json()
 
-        # Find the latest entry
-        latest_entry = root.find('{http://www.w3.org/2005/Atom}entry')
-        download_url = latest_entry.find('{http://www.w3.org/2005/Atom}link').get('href')
-        version = latest_entry.find('{http://www.w3.org/2005/Atom}title').text
+        # Find the arm64 DMG asset
+        dmg_asset = next((asset for asset in release_info['assets'] if 'arm64.dmg' in asset['name']), None)
+        if not dmg_asset:
+            raise Exception("No arm64 DMG found in the latest release")
 
-        # Download Emacs
+        dmg_url = dmg_asset['browser_download_url']
+        version = release_info['tag_name']
+
+        print_styled(f"Found Emacs version: {version}", Colors.OKBLUE)
+        print_styled(f"Downloading from: {dmg_url}", Colors.OKBLUE)
+
+        # Download the DMG
         downloads_dir = script_dir / "downloads" / "emacs"
         downloads_dir.mkdir(parents=True, exist_ok=True)
         dmg_path = downloads_dir / f"Emacs-{version}.dmg"
 
-        print_styled(f"Downloading Emacs {version}...", Colors.OKBLUE)
-        download_file(download_url, dmg_path)
+        download_file(dmg_url, dmg_path)
 
         # Mount the DMG
         print_styled("Mounting Emacs DMG...", Colors.OKBLUE)
@@ -297,18 +296,51 @@ async def install_emacs(script_dir: Path) -> None:
         if mount_process.returncode != 0:
             raise Exception(f"Failed to mount DMG: {stderr.decode()}")
 
-        # Copy Emacs.app to Applications
+        # Find the mounted volume
+        mounted_volume = None
+        for line in stdout.decode().split('\n'):
+            if '/Volumes/' in line:
+                mounted_volume = line.split()[-1]
+                break
+
+        if not mounted_volume:
+            raise Exception("Failed to find mounted volume")
+
+        print_styled(f"Mounted volume: {mounted_volume}", Colors.OKBLUE)
+
+        # Install Emacs
         print_styled("Installing Emacs...", Colors.OKBLUE)
-        source_path = Path("/Volumes/Emacs/Emacs.app")
-        shutil.copytree(source_path, emacs_app_path)
+        source_path = Path(mounted_volume) / "Emacs.app"
+        dest_path = Path("/Applications/Emacs.app")
+
+        if not source_path.exists():
+            raise Exception(f"Emacs.app not found in mounted volume: {source_path}")
+
+        if dest_path.exists():
+            print_styled("Removing existing Emacs installation...", Colors.WARNING)
+            shutil.rmtree(dest_path)
+
+        print_styled(f"Copying Emacs.app to {dest_path}...", Colors.OKBLUE)
+        shutil.copytree(source_path, dest_path)
 
         # Unmount the DMG
         print_styled("Unmounting Emacs DMG...", Colors.OKBLUE)
-        await run_command(['hdiutil', 'detach', '/Volumes/Emacs'])
+        unmount_process = await asyncio.create_subprocess_exec(
+            'hdiutil', 'detach', mounted_volume,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await unmount_process.communicate()
 
         print_styled(f"{CHECK} Emacs {version} installed successfully", Colors.OKGREEN)
     except Exception as e:
         print_styled(f"{CROSS} Emacs installation failed: {str(e)}", Colors.FAIL)
+    finally:
+        # Ensure DMG is unmounted even if an error occurred
+        try:
+            await run_command(['hdiutil', 'detach', mounted_volume, '-force'])
+        except:
+            pass
 
 async def install_software(script_dir: Path) -> None:
     """Install all required software."""
