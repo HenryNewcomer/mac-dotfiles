@@ -3,6 +3,7 @@
 # Custom aliases
 alias dev="cd ~/dev/"
 alias ros="cd ~/dev/rosai && source .venv/bin/activate && python app.py --help"
+alias echoai="cd ~/dev/echo"
 
 # Setup Python environment
 alias setpy="python3 -m venv .venv && source .venv/bin/activate"
@@ -41,5 +42,10 @@ export CLICOLOR=1
 
 # Set colors for the prompt
 autoload -U colors && colors
+
+# Ignore duplicate commands in history
+# This makes it so pressing UP doesn't keep showing the exact same command over and over,
+# if they were used in succession.
+setopt HIST_IGNORE_DUPS
 
 # <<< Henry's customizations
