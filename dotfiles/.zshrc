@@ -3,7 +3,8 @@
 # Custom aliases
 alias dev="cd ~/dev/"
 alias ros="cd ~/dev/rosai && source .venv/bin/activate && python app.py --help"
-alias echoai="cd ~/dev/echo"
+alias rosai="cd ~/dev/rosai && source .venv/bin/activate"
+alias echoai="cd ~/dev/echo && source .venv/bin/activate"
 
 # Setup Python environment
 alias setpy="python3 -m venv .venv && source .venv/bin/activate"
