@@ -21,6 +21,9 @@ alias python=python3 # Super weird that I have to add this, but... ¯\_(ツ)_/¯
 # Manually add environment variables for Emacs
 export PATH="/Applications/Emacs.app/Contents/MacOS:$PATH"
 
+# Access custom clean_ds_store() bash function to recursively remove .DS_Store from current dir and its children
+alias clean-ds="bash ~/dev/mac-dotfiles/clean_ds_store.sh"
+
 ### Adds color as seen within Kitty
 
 # Enable color support of ls and also add handy aliases
