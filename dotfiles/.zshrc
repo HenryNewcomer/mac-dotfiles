@@ -24,6 +24,7 @@ export PATH="/Applications/Emacs.app/Contents/MacOS:$PATH"
 # Access custom clean_ds_store() bash function to recursively remove .DS_Store from current dir and its children
 alias clean-ds="bash ~/dev/mac-dotfiles/clean_ds_store.sh"
 
+
 ### Adds color as seen within Kitty
 
 # Enable color support of ls and also add handy aliases
@@ -51,5 +52,10 @@ autoload -U colors && colors
 # This makes it so pressing UP doesn't keep showing the exact same command over and over,
 # if they were used in succession.
 setopt HIST_IGNORE_DUPS
+
+# Custom "webp" function to convert images to webp format
+webp() {
+    ~/dev/webp-converter/webp_converter.sh "$@"
+}
 
 # <<< Henry's customizations
