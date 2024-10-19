@@ -23,7 +23,7 @@ export PATH="/Applications/Emacs.app/Contents/MacOS:$PATH"
 
 # Access custom clean_ds_store() bash function to recursively remove .DS_Store from current dir and its children
 # TODO: Just merge into mac-dotfiles project.
-alias clean-ds="bash ~/dev/mac-dotfiles/clean_ds_store.sh"
+alias dsstore="bash ~/dev/mac-dotfiles/clean_ds_store.sh"
 
 
 ### Adds color as seen within Kitty
