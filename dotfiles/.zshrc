@@ -2,11 +2,16 @@
 # --------------------------
 
 
-# Custom aliases
+# Custom aliases for important directory locations
 alias dev="cd ~/dev/"
 alias ros="cd ~/dev/rosai && source .venv/bin/activate && python app.py --help"
 alias rosai="cd ~/dev/rosai && source .venv/bin/activate"
 alias echoai="cd ~/dev/echo && source .venv/bin/activate"
+alias macdot="cd ~/dev/mac-dotfiles/"
+
+# Git aliases
+alias gs="git status"
+# prune_stashes
 
 # Setup Python environment
 alias setpy="python3 -m venv .venv && source .venv/bin/activate"
