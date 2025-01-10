@@ -1,4 +1,6 @@
 # >>> Henry's customizations
+# --------------------------
+
 
 # Custom aliases
 alias dev="cd ~/dev/"
@@ -59,4 +61,75 @@ webp() {
     ~/dev/webp-converter/webp_converter.sh "$@"
 }
 
+# Only retain the X most recent stashes in the current repo.
+function prune_stashes() {
+    typeset -i retain_amount=10
+    echo "Pruning stashes; retaining the $retain_amount most recent..."
+    #echo "Current stash count: $(git stash list | wc -l)"
+    git stash list | tail -n +$((retain_amount+1)) | cut -d: -f1 | xargs -r -n 1 git stash drop
+    echo "Pruning complete.\n"
+}
+
+# -------------
+# Work-related
+# -------------
+
+MAZI_DIR="$HOME/dev/work/pixelpeople/teamconnect/mazipro-portal/"
+alias mazi="cd $MAZI_DIR"
+
+# Pull GitHub changes into the core, local MaziPro branches.
+function update_local_mazipro_repo() {
+    cd $MAZI_DIR
+    echo "Current location: $(pwd)"
+    current_branch=$(git rev-parse --abbrev-ref HEAD)
+    echo "Current branch: $current_branch\n"
+
+    echo "Fetching latest changes from GitHub..."
+    git fetch
+
+    echo "Checking for changes to stash..."
+    if git diff-index --quiet HEAD --; then
+        echo "No changes to stash."
+    else
+        echo "Stashing current work..."
+        git stash -u -m "Pre-pull stash."
+        stashed=true
+    fi
+
+    echo "\nPulling latest changes from GitHub...\n"
+
+    git checkout main
+    git pull origin main
+    echo "Updated branch: main\n"
+
+    git checkout staging-phase1
+    git pull origin staging-phase1
+    echo "Updated branch: staging-phase1\n"
+
+    git checkout main_phase2
+    git pull origin main_phase2
+    echo "Updated branch: main_phase2\n"
+
+    git checkout staging
+    git pull origin staging
+    echo "Updated branch: staging\n"
+
+    echo "All core branches have been pulled."
+    echo "Swapping back to branch: $current_branch...\n"
+
+    git checkout $current_branch
+
+    if [[ -n $stashed ]]; then
+        git stash pop
+    else
+        echo "Skipped restoring stash. No changes to apply from the stash."
+    fi
+
+    echo "\nFresh repo pulls complete.\n"
+
+    prune_stashes
+}
+alias mazipull='update_local_mazipro_repo'
+
+# --------------------------
 # <<< Henry's customizations
