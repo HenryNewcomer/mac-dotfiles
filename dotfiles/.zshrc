@@ -8,6 +8,7 @@ alias ros="cd ~/dev/rosai && source .venv/bin/activate && python app.py --help"
 alias rosai="cd ~/dev/rosai && source .venv/bin/activate"
 alias echoai="cd ~/dev/echo && source .venv/bin/activate"
 alias macdot="cd ~/dev/mac-dotfiles/"
+alias merge="cd ~/dev/merge_code/"
 
 # Git aliases
 alias gs="git status"
