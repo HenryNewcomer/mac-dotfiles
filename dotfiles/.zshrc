@@ -125,7 +125,7 @@ function update_local_mazipro_repo() {
 
     git checkout $current_branch
 
-    if [[ -n $stashed ]]; then
+    if [[ $stashed == true ]]; then
         git stash pop
     else
         echo "Skipped restoring stash. No changes to apply from the stash."
