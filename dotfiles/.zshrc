@@ -4,6 +4,7 @@
 
 # Custom aliases for important directory locations
 alias dev="cd ~/dev/"
+alias iris="cd ~/dev/iris && source .venv/bin/activate && python app.py --help"
 alias ros="cd ~/dev/rosai && source .venv/bin/activate && python app.py --help"
 alias rosai="cd ~/dev/rosai && source .venv/bin/activate"
 alias echoai="cd ~/dev/echo && source .venv/bin/activate"
