@@ -80,7 +80,7 @@ function prune_stashes() {
 # Work-related
 # -------------
 
-MAZI_DIR="$HOME/dev/work/pixelpeople/teamconnect/mazipro-portal/"
+MAZI_DIR="$HOME/dev/work/pixelpeople/mazipro/mazipro-portal/"
 alias mazi="cd $MAZI_DIR"
 
 # Pull GitHub changes into the core, local MaziPro branches.
