@@ -621,6 +621,34 @@ def clear_backups(script_dir: Path) -> None:
     else:
         print_styled("No backups directory found", Colors.WARNING)
 
+async def display_menu() -> int:
+    """Display an interactive menu and return the user's choice."""
+    menu_options = {
+        1: "Update OS dotfiles from repository (most common)",
+        2: "Backup existing OS dotfiles",
+        3: "Update repository dotfiles from OS",
+        4: "Run full installation (software + dotfiles)",
+        5: "Clear all backups",
+        6: "Exit"
+    }
+
+    print_styled("\nPlease select an option:", Colors.HEADER, bold=True)
+    for key, value in menu_options.items():
+        if key == 1:  # Highlight the most common option
+            print_styled(f"{key}. {value} {Colors.BOLD}(recommended){Colors.ENDC}", Colors.OKGREEN)
+        else:
+            print_styled(f"{key}. {value}", Colors.OKBLUE)
+
+    while True:
+        try:
+            choice = int(input("\nEnter your choice (1-6): "))
+            if 1 <= choice <= 6:
+                return choice
+            print_styled("Please enter a number between 1 and 6", Colors.WARNING)
+        except ValueError:
+            print_styled("Please enter a valid number", Colors.WARNING)
+
+
 async def main(args: argparse.Namespace) -> None:
     """Main function to orchestrate the setup process."""
     print_header()
@@ -628,57 +656,66 @@ async def main(args: argparse.Namespace) -> None:
     script_dir = Path(__file__).parent.resolve()
     home_dir = Path.home()
 
-    if args.clear:
-        clear_backups(script_dir)
-        return
-
-    if args.backup:
-        backup_dotfiles(script_dir, home_dir, standalone=True)
-        return
-
-    if args.update_repo is not None:
-        update_repo_dotfiles(script_dir, home_dir, args.update_repo)
-        return
-
-    if args.update_os:
-        update_os_dotfiles(script_dir, home_dir)
-        return
-
-    backup_dir = create_backup_dir(script_dir)
-
-    print_styled("Starting Dotfiles and Software Installation", Colors.HEADER, bold=True, underline=True)
-
-    # Backup existing dotfiles
-    backup_dotfiles(script_dir, home_dir)
-
-    # Install software
-    await install_software(script_dir)
-
-    # Process dotfiles
-    success_count, fail_count = process_dotfiles(script_dir, home_dir, backup_dir)
-
-    # Cleanup and finalize
-    await cleanup_and_finalize()
-
-    print_styled(f"\n{'='*50}", Colors.HEADER, bold=True)
-    print_styled("Installation Summary", Colors.HEADER, bold=True)
-    print_styled(f"{'='*50}", Colors.HEADER, bold=True)
-    print_styled(f"{CHECK} Successful dotfile operations: {success_count}", Colors.OKGREEN, bold=True)
-    if fail_count > 0:
-        print_styled(f"{CROSS} Failed dotfile operations: {fail_count}", Colors.FAIL, bold=True)
-    print_styled(f"Backup directory: {backup_dir}", Colors.WARNING)
-
-    print_styled("\nInstallation process completed!", Colors.HEADER, bold=True)
-    print_styled("Please review any error messages above and take necessary actions.", Colors.WARNING)
-    print_styled("It's recommended to restart your system to ensure all changes take effect.", Colors.WARNING)
-
-    # Ask user if they want to clear backups
-    clear_backups_input = input("\nDo you want to clear all backups? [y]es/[n]o: ").lower()
-    if clear_backups_input == 'yes' or clear_backups_input == 'y':
-        clear_backups(script_dir)
+    # If command-line arguments are provided, use them
+    if any([args.update_os, args.backup, args.clear, args.update_repo is not None]):
+        if args.clear:
+            clear_backups(script_dir)
+            return
+        if args.backup:
+            backup_dotfiles(script_dir, home_dir, standalone=True)
+            return
+        if args.update_repo is not None:
+            update_repo_dotfiles(script_dir, home_dir, args.update_repo)
+            return
+        if args.update_os:
+            update_os_dotfiles(script_dir, home_dir)
+            return
     else:
-        print_styled("You can clear the backups later by running:", Colors.WARNING)
-        print_styled(f"./setup.py --clear", Colors.OKBLUE)
+        # If no arguments, show interactive menu
+        choice = await display_menu()
+
+        if choice == 1:
+            update_os_dotfiles(script_dir, home_dir)
+            return
+        elif choice == 2:
+            backup_dotfiles(script_dir, home_dir, standalone=True)
+            return
+        elif choice == 3:
+            update_repo_dotfiles(script_dir, home_dir, None)  # None means update all
+            return
+        elif choice == 4:  # Full installation
+            backup_dir = create_backup_dir(script_dir)
+            print_styled("Starting Dotfiles and Software Installation", Colors.HEADER, bold=True, underline=True)
+            backup_dotfiles(script_dir, home_dir)
+            await install_software(script_dir)
+            success_count, fail_count = process_dotfiles(script_dir, home_dir, backup_dir)
+            await cleanup_and_finalize()
+
+            print_styled(f"\n{'='*50}", Colors.HEADER, bold=True)
+            print_styled("Installation Summary", Colors.HEADER, bold=True)
+            print_styled(f"{'='*50}", Colors.HEADER, bold=True)
+            print_styled(f"{CHECK} Successful dotfile operations: {success_count}", Colors.OKGREEN, bold=True)
+            if fail_count > 0:
+                print_styled(f"{CROSS} Failed dotfile operations: {fail_count}", Colors.FAIL, bold=True)
+            print_styled(f"Backup directory: {backup_dir}", Colors.WARNING)
+            print_styled("\nInstallation process completed!", Colors.HEADER, bold=True)
+            print_styled("Please review any error messages above and take necessary actions.", Colors.WARNING)
+            print_styled("It's recommended to restart your system to ensure all changes take effect.", Colors.WARNING)
+
+            # Ask user if they want to clear backups
+            clear_backups_input = input("\nDo you want to clear all backups? [y]es/[n]o: ").lower()
+            if clear_backups_input == 'yes' or clear_backups_input == 'y':
+                clear_backups(script_dir)
+            else:
+                print_styled("You can clear the backups later by running:", Colors.WARNING)
+                print_styled(f"./app.py --clear", Colors.OKBLUE)
+
+        elif choice == 5:  # Clear backups
+            clear_backups(script_dir)
+            return
+        elif choice == 6:  # Exit
+            print_styled("Exiting...", Colors.OKBLUE)
+            return
 
 def get_args():
     parser = argparse.ArgumentParser(description="Dotfiles and software installation script")
