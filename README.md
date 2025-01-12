@@ -30,32 +30,35 @@ For Python version:
    cd mac-dotfiles
    ```
 
-2. Ensure the scripts have executable permissions:
+2. Ensure the script has executable permissions:
    ```
-   chmod +x setup.py
+   chmod +x app.py
+   ```
+
+3. Setup environment and install dependencies:
+   ```
+   python -m venv .venv
+   source .venv/bin/activate
+   pip install -r requirements.txt
    ```
 
 ## Usage
 
 1. Run the script directly:
    ```
-   ./setup.py
+   ./app.py
    ```
 
 2. Or use Python explicitly:
    ```
-   python setup.py
-   ```
-   or
-   ```
-   python3 setup.py
+   python app.py
    ```
 
 ### Deploy Dotfiles and Install Software
 
 To deploy your dotfiles and install software:
 
-`./setup.py`
+`./app.py`
 
 This command will:
 - Install Homebrew (if not already installed)
@@ -70,16 +73,16 @@ This command will:
 
 To update specific dotfiles in the repository from your home directory:
 
-`./setup.py --update [file1] [file2] ...`
+`./app.py --update [file1] [file2] ...`
 
 For example:
 ```
-./setup.py --update .zshrc .vimrc "config/kitty/kitty.conf"
+./app.py --update .zshrc .vimrc "config/kitty/kitty.conf"
 ```
 
 To update all dotfiles in the repository:
 
-`./setup.py --update`
+`./app.py --update`
 
 This will check for all files in the `dotfiles` directory and update them from your home directory. The update process will only modify the content between the custom tags in each file.
 
@@ -87,11 +90,11 @@ This will check for all files in the `dotfiles` directory and update them from y
 
 To clear all backup directories:
 
-`./setup.py --clear`
+`./app.py --clear`
 
 ## Directory Structure
 
-- `setup.py`: The main Python script
+- `app.py`: The main Python script
 - `dotfiles/`: Directory containing your dotfiles
 - `backups/`: Directory where backups are stored (created automatically)
 
@@ -99,7 +102,7 @@ To clear all backup directories:
 
 ### Adding New Software
 
-To add new software for installation, modify the `install_software` function in `setup.py`. Add the package name to the list of applications to install or create a new installation function for more complex installations.
+To add new software for installation, modify the `install_software` function in `app.py`. Add the package name to the list of applications to install or create a new installation function for more complex installations.
 
 ### Modifying Dotfiles
 
