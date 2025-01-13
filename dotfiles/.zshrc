@@ -84,7 +84,46 @@ function prune_stashes() {
 MAZI_DIR="$HOME/dev/work/pixelpeople/mazipro/mazipro-portal/"
 alias mazi="cd $MAZI_DIR"
 
-# Pull GitHub changes into the core, local MaziPro branches.
+# Helper function to safely reset branch state without removing files
+function __mazi_reset_branch_state() {
+    local branch=$1
+    # Abort any pending merges
+    git merge --abort 2>/dev/null
+    # Reset only tracked files to their original state
+    git reset --hard "origin/$branch"
+}
+
+# Helper function to safely update a branch
+function __mazi_update_branch() {
+    local branch=$1
+    echo "\nUpdating branch: $branch"
+
+    # Try to checkout branch
+    if ! git checkout "$branch"; then
+        echo "Error: Failed to checkout $branch"
+        return 1
+    fi
+
+    # Reset only tracked files
+    __mazi_reset_branch_state "$branch"
+
+    # Fetch latest for this specific branch
+    if ! git fetch origin "$branch"; then
+        echo "Error: Failed to fetch $branch"
+        return 1
+    fi
+
+    # Reset to remote state (avoid merge operations)
+    if ! git reset --hard "origin/$branch"; then
+        echo "Error: Failed to reset $branch to origin state"
+        return 1
+    fi
+
+    echo "Successfully updated branch: $branch\n"
+    return 0
+}
+
+# Main function to pull GitHub changes into core, local MaziPro branches
 function update_local_mazipro_repo() {
     cd $MAZI_DIR || { echo "Error: Could not change to MAZI_DIR"; return 1; }
     echo "Current location: $(pwd)"
@@ -93,53 +132,22 @@ function update_local_mazipro_repo() {
     current_branch=$(git rev-parse --abbrev-ref HEAD)
     echo "Current branch: $current_branch\n"
 
-    # Function to clean working directory
-    clean_working_directory() {
-        # Reset any changes in tracked files
-        git reset --hard HEAD
-        # Remove untracked files and directories
-        git clean -fd
-    }
-
-    # Function to safely update a branch
-    update_branch() {
-        local branch=$1
-        echo "\nUpdating branch: $branch"
-
-        # Try to checkout branch
-        if ! git checkout "$branch"; then
-            echo "Error: Failed to checkout $branch"
-            return 1
-        }
-
-        # Clean working directory before pull
-        clean_working_directory
-
-        # Pull latest changes
-        if ! git pull origin "$branch"; then
-            echo "Error: Failed to pull latest changes for $branch"
-            return 1
-        }
-
-        # Clean again after pull to ensure no artifacts remain
-        clean_working_directory
-
-        echo "Successfully updated branch: $branch\n"
-        return 0
-    }
-
     # Start update process
     echo "Fetching latest changes from GitHub..."
-    git fetch || { echo "Error: Failed to fetch from remote"; return 1; }
+    if ! git fetch --all; then
+        echo "Error: Failed to fetch from remote"
+        return 1
+    fi
 
-    # Check for local changes
-    if ! git diff-index --quiet HEAD --; then
-        echo "Stashing current work..."
-        if ! git stash save -u "Pre-pull stash $(date)"; then
+    # Check for both tracked and untracked changes
+    if [ -n "$(git status --porcelain)" ]; then
+        echo "Stashing current work (including untracked files)..."
+        if ! git stash push --include-untracked -m "Pre-pull stash $(date)"; then
             echo "Error: Failed to stash changes"
             return 1
         fi
         stashed=true
+        echo "Changes have been stashed."
     else
         echo "No changes to stash."
         stashed=false
@@ -150,12 +158,13 @@ function update_local_mazipro_repo() {
 
     # Update each branch
     for branch in "${branches[@]}"; do
-        if ! update_branch "$branch"; then
+        if ! __mazi_update_branch "$branch"; then
             echo "Error occurred while updating $branch"
             # Try to return to original branch
             git checkout "$current_branch"
             # Restore stashed changes if any
             if [[ $stashed == true ]]; then
+                echo "Restoring stashed changes after error..."
                 git stash pop
             fi
             return 1
@@ -171,8 +180,8 @@ function update_local_mazipro_repo() {
         return 1
     fi
 
-    # Clean working directory before applying stash
-    clean_working_directory
+    # Reset to remote state
+    __mazi_reset_branch_state "$current_branch"
 
     # Restore stashed changes if any
     if [[ $stashed == true ]]; then
