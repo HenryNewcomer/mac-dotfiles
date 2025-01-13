@@ -86,55 +86,110 @@ alias mazi="cd $MAZI_DIR"
 
 # Pull GitHub changes into the core, local MaziPro branches.
 function update_local_mazipro_repo() {
-    cd $MAZI_DIR
+    cd $MAZI_DIR || { echo "Error: Could not change to MAZI_DIR"; return 1; }
     echo "Current location: $(pwd)"
+
+    # Store initial branch
     current_branch=$(git rev-parse --abbrev-ref HEAD)
     echo "Current branch: $current_branch\n"
 
+    # Function to clean working directory
+    clean_working_directory() {
+        # Reset any changes in tracked files
+        git reset --hard HEAD
+        # Remove untracked files and directories
+        git clean -fd
+    }
+
+    # Function to safely update a branch
+    update_branch() {
+        local branch=$1
+        echo "\nUpdating branch: $branch"
+
+        # Try to checkout branch
+        if ! git checkout "$branch"; then
+            echo "Error: Failed to checkout $branch"
+            return 1
+        }
+
+        # Clean working directory before pull
+        clean_working_directory
+
+        # Pull latest changes
+        if ! git pull origin "$branch"; then
+            echo "Error: Failed to pull latest changes for $branch"
+            return 1
+        }
+
+        # Clean again after pull to ensure no artifacts remain
+        clean_working_directory
+
+        echo "Successfully updated branch: $branch\n"
+        return 0
+    }
+
+    # Start update process
     echo "Fetching latest changes from GitHub..."
-    git fetch
+    git fetch || { echo "Error: Failed to fetch from remote"; return 1; }
 
-    echo "Checking for changes to stash..."
-    if git diff-index --quiet HEAD --; then
-        echo "No changes to stash."
-    else
+    # Check for local changes
+    if ! git diff-index --quiet HEAD --; then
         echo "Stashing current work..."
-        git stash -u -m "Pre-pull stash."
+        if ! git stash save -u "Pre-pull stash $(date)"; then
+            echo "Error: Failed to stash changes"
+            return 1
+        fi
         stashed=true
-    fi
-
-    echo "\nPulling latest changes from GitHub...\n"
-
-    git checkout main
-    git pull origin main
-    echo "Updated branch: main\n"
-
-    git checkout staging-phase1
-    git pull origin staging-phase1
-    echo "Updated branch: staging-phase1\n"
-
-    git checkout main_phase2
-    git pull origin main_phase2
-    echo "Updated branch: main_phase2\n"
-
-    git checkout staging
-    git pull origin staging
-    echo "Updated branch: staging\n"
-
-    echo "All core branches have been pulled."
-    echo "Swapping back to branch: $current_branch...\n"
-
-    git checkout $current_branch
-
-    if [[ $stashed == true ]]; then
-        git stash pop
     else
-        echo "Skipped restoring stash. No changes to apply from the stash."
+        echo "No changes to stash."
+        stashed=false
     fi
 
-    echo "\nFresh repo pulls complete.\n"
+    # Array of branches to update
+    branches=("main" "staging-phase1" "main_phase2" "staging")
 
+    # Update each branch
+    for branch in "${branches[@]}"; do
+        if ! update_branch "$branch"; then
+            echo "Error occurred while updating $branch"
+            # Try to return to original branch
+            git checkout "$current_branch"
+            # Restore stashed changes if any
+            if [[ $stashed == true ]]; then
+                git stash pop
+            fi
+            return 1
+        fi
+    done
+
+    echo "All core branches have been updated."
+    echo "Returning to original branch: $current_branch..."
+
+    # Return to original branch
+    if ! git checkout "$current_branch"; then
+        echo "Error: Failed to return to $current_branch"
+        return 1
+    fi
+
+    # Clean working directory before applying stash
+    clean_working_directory
+
+    # Restore stashed changes if any
+    if [[ $stashed == true ]]; then
+        echo "Restoring stashed changes..."
+        if ! git stash pop; then
+            echo "Warning: Failed to restore stashed changes. Your changes are still in the stash."
+            echo "You may need to resolve conflicts manually."
+            return 1
+        fi
+    fi
+
+    echo "\nRepository update complete.\n"
+
+    # Prune old stashes
     prune_stashes
+
+    return 0
 }
 alias mazipull='update_local_mazipro_repo'
 
