@@ -84,7 +84,7 @@ function prune_stashes() {
 MAZI_DIR="$HOME/dev/work/pixelpeople/mazipro/mazipro-portal/"
 alias mazi="cd $MAZI_DIR"
 
-# Helper function to safely reset branch state without removing files
+# Helper function to safely reset branch state
 function __mazi_reset_branch_state() {
     local branch=$1
     # Abort any pending merges
@@ -104,20 +104,34 @@ function __mazi_update_branch() {
         return 1
     fi
 
-    # Reset only tracked files
-    __mazi_reset_branch_state "$branch"
-
-    # Fetch latest for this specific branch
+    # Fetch latest changes for this branch specifically
+    echo "Fetching updates for $branch..."
     if ! git fetch origin "$branch"; then
         echo "Error: Failed to fetch $branch"
         return 1
     fi
 
-    # Reset to remote state (avoid merge operations)
-    if ! git reset --hard "origin/$branch"; then
-        echo "Error: Failed to reset $branch to origin state"
-        return 1
+    # Show status and changes to be pulled
+    git status
+
+    # Get the number of commits behind
+    local behind_count=$(git rev-list HEAD..origin/"$branch" --count)
+    if [ $behind_count -gt 0 ]; then
+        echo "\nNew changes to pull for $branch:"
+        git log HEAD..origin/"$branch" --oneline
+
+        # Pull changes with merge strategy
+        echo "\nPulling updates..."
+        if ! git merge --ff-only "origin/$branch"; then
+            echo "Error: Failed to fast-forward merge $branch"
+            return 1
+        fi
+    else
+        echo "Branch $branch is up to date."
     fi
+
+    # Reset to ensure clean state
+    __mazi_reset_branch_state "$branch"
 
     echo "Successfully updated branch: $branch\n"
     return 0
@@ -134,7 +148,7 @@ function update_local_mazipro_repo() {
 
     # Start update process
     echo "Fetching latest changes from GitHub..."
-    if ! git fetch --all; then
+    if ! git fetch --all --prune; then
         echo "Error: Failed to fetch from remote"
         return 1
     fi
@@ -175,13 +189,10 @@ function update_local_mazipro_repo() {
     echo "Returning to original branch: $current_branch..."
 
     # Return to original branch
-    if ! git checkout "$current_branch"; then
+    if ! __mazi_update_branch "$current_branch"; then
         echo "Error: Failed to return to $current_branch"
         return 1
     fi
-
-    # Reset to remote state
-    __mazi_reset_branch_state "$current_branch"
 
     # Restore stashed changes if any
     if [[ $stashed == true ]]; then
