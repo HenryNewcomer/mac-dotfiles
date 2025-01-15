@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 
-import os
-import shutil
-import sys
-import subprocess
-import asyncio
 import argparse
+import asyncio
+import os
+import plistlib
 import re
 import requests
-import zipfile
-import plistlib
-from pathlib import Path
-from datetime import datetime
-from typing import List, Tuple, Callable, Dict
+import shutil
+import subprocess
+import sys
 import xml.etree.ElementTree as ET
+import zipfile
+from datetime import datetime, time
+from pathlib import Path
+from typing import List, Tuple, Callable, Dict
 
 # ANSI color codes for styled output
 class Colors:
@@ -47,27 +47,43 @@ APPLICATIONS = {
     'kitty': {
         'name': 'Kitty',
         'install_method': 'homebrew',
-        'locations': ['/Applications/kitty.app', '/opt/homebrew/bin/kitty']
+        'package': 'kitty',  # The actual homebrew package name
+        'locations': [  # Optional - if not provided, just checks if brew has it installed
+            '/Applications/kitty.app',
+            '/opt/homebrew/bin/kitty'
+        ],
+        'post_install': ['install_kitty_icon'],  # Additional functions to run after installation
     },
     'vim': {
         'name': 'Vim',
         'install_method': 'homebrew',
-        'locations': ['/usr/bin/vim', '/opt/homebrew/bin/vim']
+        'package': 'vim'
     },
     'nvim': {
         'name': 'Neovim',
         'install_method': 'homebrew',
-        'locations': ['/usr/local/bin/nvim', '/opt/homebrew/bin/nvim']
+        'package': 'neovim'
     },
     'zsh': {
         'name': 'Zsh',
         'install_method': 'homebrew',
-        'locations': ['/bin/zsh', '/usr/local/bin/zsh', '/opt/homebrew/bin/zsh']
+        'package': 'zsh',
+        'locations': [
+            '/bin/zsh',
+            '/usr/local/bin/zsh',
+            '/opt/homebrew/bin/zsh'
+        ]
     },
     'emacs': {
         'name': 'Emacs',
         'install_method': 'custom',
+        'install_function': 'install_emacs',
         'locations': ['/Applications/Emacs.app']
+    },
+    'tree': {
+        'name': 'Tree',
+        'install_method': 'homebrew',
+        'install_function': 'tree'
     }
 }
 
@@ -332,7 +348,7 @@ async def install_emacs(script_dir: Path) -> None:
         print_styled(f"{CROSS} Emacs Plus 30 installation failed: {str(e)}", Colors.FAIL)
 
 async def install_software(script_dir: Path) -> None:
-    """Install all required software."""
+    """Install all required software using the improved configuration system."""
     if not await install_homebrew():
         print_styled("Homebrew installation failed. Skipping package installations.", Colors.FAIL)
         return
@@ -340,25 +356,59 @@ async def install_software(script_dir: Path) -> None:
     await install_fira_code_font(script_dir)
 
     for app_key, app_info in APPLICATIONS.items():
+        if await is_package_installed(app_key):
+            print_styled(f"{CHECK} {app_info['name']} is already installed. Updating...", Colors.OKGREEN)
+            if app_info['install_method'] == 'homebrew':
+                # Use the package_key as the homebrew package name if not specified otherwise
+                package_name = app_info.get('package', app_key)
+                await run_command(['brew', 'upgrade', package_name])
+            continue
+
         if app_info['install_method'] == 'homebrew':
-            if app_key == 'kitty':
-                await install_kitty(script_dir)
-            elif not await is_package_installed(app_key):
-                await install_brew_package(app_key)
+            print_styled(f"{ARROW} Installing {app_info['name']}...", Colors.OKBLUE)
+            # Use the package_key as the homebrew package name if not specified otherwise
+            package_name = app_info.get('package', app_key)
+            returncode, _, stderr = await run_command(['brew', 'install', package_name])
+
+            if returncode == 0:
+                print_styled(f"{CHECK} {app_info['name']} installed successfully", Colors.OKGREEN)
+
+                # Run any post-install functions
+                if 'post_install' in app_info:
+                    for func_name in app_info['post_install']:
+                        if func_name in globals():
+                            await globals()[func_name](script_dir)
             else:
-                print_styled(f"{CHECK} {app_info['name']} is already installed. Updating...", Colors.OKGREEN)
-                await run_command(['brew', 'upgrade', app_key])
-        elif app_info['install_method'] == 'custom' and app_key == 'emacs':
-            await install_emacs(script_dir)
+                print_styled(f"{CROSS} {app_info['name']} installation failed: {stderr}", Colors.FAIL)
 
-    # Add an extra blank line after software installation
-    print()
+        elif app_info['install_method'] == 'custom':
+            if 'install_function' in app_info and app_info['install_function'] in globals():
+                await globals()[app_info['install_function']](script_dir)
+            else:
+                print_styled(f"{CROSS} No installation function found for {app_info['name']}", Colors.FAIL)
 
-async def is_package_installed(package: str) -> bool:
-    """Check if a package is already installed."""
-    for location in APPLICATIONS[package]['locations']:
-        if os.path.exists(location):
+    print()  # Add an extra blank line after software installation
+
+async def check_brew_package(package: str) -> bool:
+    """Check if a package is installed via Homebrew."""
+    returncode, _, _ = await run_command(['brew', 'list', package])
+    return returncode == 0
+
+async def is_package_installed(package_key: str) -> bool:
+    """Check if a package is installed using the most appropriate method."""
+    package_info = APPLICATIONS[package_key]
+
+    # If locations are specified, check those first
+    if 'locations' in package_info and package_info['locations']:
+        if any(os.path.exists(location) for location in package_info['locations']):
             return True
+
+    # For homebrew packages, also check brew list
+    if package_info['install_method'] == 'homebrew':
+        # Use the package_key as the homebrew package name if not specified otherwise
+        package_name = package_info.get('package', package_key)
+        return await check_brew_package(package_name)
+
     return False
 
 def extract_custom_sections(content: str) -> List[str]:
@@ -572,17 +622,20 @@ async def cleanup_and_finalize() -> None:
 
     # Set ZSH as the default shell
     print_styled(f"\n{ARROW} Setting ZSH as the default shell...", Colors.OKBLUE)
-    zsh_paths = APPLICATIONS['zsh']['locations']
-    zsh_path = next((path for path in zsh_paths if os.path.exists(path)), None)
+    if 'locations' in APPLICATIONS['zsh']:
+        zsh_paths = APPLICATIONS['zsh']['locations']
+        zsh_path = next((path for path in zsh_paths if os.path.exists(path)), None)
 
-    if zsh_path:
-        try:
-            subprocess.run(['chsh', '-s', zsh_path])
-            print_styled(f"  {CHECK} ZSH set as default shell", Colors.OKGREEN)
-        except Exception as e:
-            print_styled(f"  {CROSS} Failed to set ZSH as default: {str(e)}", Colors.FAIL)
+        if zsh_path:
+            try:
+                subprocess.run(['chsh', '-s', zsh_path])
+                print_styled(f"  {CHECK} ZSH set as default shell", Colors.OKGREEN)
+            except Exception as e:
+                print_styled(f"  {CROSS} Failed to set ZSH as default: {str(e)}", Colors.FAIL)
+        else:
+            print_styled(f"  {CROSS} ZSH not found in any of the expected locations", Colors.FAIL)
     else:
-        print_styled(f"  {CROSS} ZSH not found in any of the expected locations", Colors.FAIL)
+        print_styled(f"  {CROSS} No ZSH locations configured", Colors.WARNING)
 
     # Clear and rebuild Homebrew cache
     print_styled(f"\n{ARROW} Cleaning up Homebrew...", Colors.OKBLUE)
@@ -596,11 +649,24 @@ async def cleanup_and_finalize() -> None:
     print_styled(f"\n{ARROW} Verifying installations...", Colors.OKBLUE)
     for app_key, app_info in APPLICATIONS.items():
         installed = False
-        for location in app_info['locations']:
-            if os.path.exists(location):
-                print_styled(f"  {CHECK} {app_info['name']} is installed", Colors.OKGREEN)
+
+        # Check specific locations if defined
+        if 'locations' in app_info and app_info['locations']:
+            for location in app_info['locations']:
+                if os.path.exists(location):
+                    print_styled(f"  {CHECK} {app_info['name']} is installed (found at {location})", Colors.OKGREEN)
+                    installed = True
+                    break
+
+        # For homebrew packages, also check brew list
+        if not installed and app_info['install_method'] == 'homebrew':
+            # Use the package_key as the homebrew package name if not specified otherwise
+            package_name = app_info.get('package', app_key)
+            returncode, _, _ = await run_command(['brew', 'list', package_name])
+            if returncode == 0:
+                print_styled(f"  {CHECK} {app_info['name']} is installed via Homebrew", Colors.OKGREEN)
                 installed = True
-                break
+
         if not installed:
             print_styled(f"  {CROSS} {app_info['name']} not found", Colors.FAIL)
 
@@ -624,10 +690,10 @@ def clear_backups(script_dir: Path) -> None:
 async def display_menu() -> int:
     """Display an interactive menu and return the user's choice."""
     menu_options = {
-        1: "Update OS dotfiles from repository (most common)",
+        1: "Update OS dotfiles from repository TO the OS(most common)",
         2: "Backup existing OS dotfiles",
-        3: "Update repository dotfiles from OS",
-        4: "Run full installation (software + dotfiles)",
+        3: "Update repository dotfiles FROM the OS",
+        4: "Run FULL installation (software + dotfiles)",
         5: "Clear all backups",
         6: "Exit"
     }
