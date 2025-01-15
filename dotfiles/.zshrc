@@ -13,6 +13,8 @@ alias merge="cd ~/dev/merge_code/"
 
 # Git aliases
 alias gs="git status"
+alias gpull="git pull"
+alias gpush="git push"
 # prune_stashes
 
 # Setup Python environment
