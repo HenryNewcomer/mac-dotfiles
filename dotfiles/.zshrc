@@ -72,7 +72,7 @@ webp() {
 
 # Only retain the X most recent stashes in the current repo.
 function prune_stashes() {
-    typeset -i retain_amount=10
+    typeset -i retain_amount=30
     echo "Pruning stashes; retaining the $retain_amount most recent..."
     #echo "Current stash count: $(git stash list | wc -l)"
     git stash list | tail -n +$((retain_amount+1)) | cut -d: -f1 | xargs -r -n 1 git stash drop
