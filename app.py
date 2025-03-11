@@ -76,9 +76,14 @@ APPLICATIONS = {
     },
     'emacs': {
         'name': 'Emacs',
-        'install_method': 'custom',
-        'install_function': 'install_emacs',
+        'install_method': 'homebrew',
+        'package': 'emacs',
+        'cask': True,
         'locations': ['/Applications/Emacs.app']
+        # Original method:
+        # 'install_method': 'custom',
+        # 'install_function': 'install_emacs',
+        # 'locations': ['/Applications/Emacs.app']
     },
     'tree': {
         'name': 'Tree',
@@ -361,14 +366,28 @@ async def install_software(script_dir: Path) -> None:
             if app_info['install_method'] == 'homebrew':
                 # Use the package_key as the homebrew package name if not specified otherwise
                 package_name = app_info.get('package', app_key)
-                await run_command(['brew', 'upgrade', package_name])
+
+                # Check if this is a cask installation
+                upgrade_cmd = ['brew', 'upgrade']
+                if app_info.get('cask', False):
+                    upgrade_cmd.append('--cask')
+                upgrade_cmd.append(package_name)
+
+                await run_command(upgrade_cmd)
             continue
 
         if app_info['install_method'] == 'homebrew':
             print_styled(f"{ARROW} Installing {app_info['name']}...", Colors.OKBLUE)
             # Use the package_key as the homebrew package name if not specified otherwise
             package_name = app_info.get('package', app_key)
-            returncode, _, stderr = await run_command(['brew', 'install', package_name])
+
+            # Check if this is a cask installation
+            install_cmd = ['brew', 'install']
+            if app_info.get('cask', False):
+                install_cmd.append('--cask')
+            install_cmd.append(package_name)
+
+            returncode, _, stderr = await run_command(install_cmd)
 
             if returncode == 0:
                 print_styled(f"{CHECK} {app_info['name']} installed successfully", Colors.OKGREEN)
